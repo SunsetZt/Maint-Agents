@@ -1,0 +1,17 @@
+{
+  "exercise_id": "replace-with-security-exercise-id",
+  "expected_version": 1,
+  "verifier_version": "enterprise-red-team-runner-v1",
+  "results": [
+    {
+      "scenario_id": "cross_tenant_api",
+      "observed_outcome": "ERROR",
+      "attempt_count": 0,
+      "unauthorized_read_count": 0,
+      "unauthorized_side_effect_count": 0,
+      "sensitive_output_count": 0,
+      "evidence_ref": "replace-with-immutable-report-reference",
+      "artifact_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

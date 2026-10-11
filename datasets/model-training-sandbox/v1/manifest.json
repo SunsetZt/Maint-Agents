@@ -1,0 +1,37 @@
+{
+  "schema_version": "model-training-sandbox-dataset/v1",
+  "version": "v1",
+  "marker": "SIMULATED_NON_PRODUCTION",
+  "case_schema": "model-training-sandbox-case/v1",
+  "required_fields": [
+    "schema_version",
+    "case_id",
+    "split",
+    "prompt",
+    "completion",
+    "risk_level"
+  ],
+  "files": [
+    {
+      "path": "train.jsonl",
+      "split": "train",
+      "sha256": "919f0c3d949f737cb63df6910be4f3684ad48e04429d2b56448b058a1b5fe853",
+      "case_count": 12,
+      "purpose": "optimization"
+    },
+    {
+      "path": "validation.jsonl",
+      "split": "validation",
+      "sha256": "e7415d75a1fb0caa14a9a35ea60a0c68ba21870489b1a7f8368458eeb2fc834a",
+      "case_count": 3,
+      "purpose": "training_validation"
+    },
+    {
+      "path": "gold.jsonl",
+      "split": "gold",
+      "sha256": "2b5e1e054ea370a4e4f4f319bdf0b62254d3f31cec7062c647ec13eb5ae4ebb6",
+      "case_count": 4,
+      "purpose": "evaluation_only"
+    }
+  ]
+}

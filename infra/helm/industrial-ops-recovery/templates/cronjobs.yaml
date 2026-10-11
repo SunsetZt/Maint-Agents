@@ -1,0 +1,101 @@
+{{- range .Values.verificationJobs }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: industrial-ops-recovery-{{ .name }}
+  labels:
+    app.kubernetes.io/name: industrial-ops-recovery
+    app.kubernetes.io/component: {{ .name | quote }}
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  schedule: {{ .schedule | quote }}
+  suspend: {{ if hasKey . "suspend" }}{{ .suspend }}{{ else }}true{{ end }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .failedJobsHistoryLimit | default 5 }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ .activeDeadlineSeconds | default 3600 }}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: industrial-ops-recovery
+            app.kubernetes.io/component: {{ .name | quote }}
+        spec:
+          serviceAccountName: {{ $.Values.serviceAccount.name }}
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: verifier
+              image: {{ .verifier.image | quote }}
+              command:
+                {{- toYaml .verifier.command | nindent 16 }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: recovery-report
+                  mountPath: /recovery
+                - name: verifier-secret
+                  mountPath: /run/recovery-verifier
+                  readOnly: true
+          containers:
+            - name: evidence-reporter
+              image: "{{ $.Values.reporter.image.repository }}@{{ $.Values.reporter.image.digest }}"
+              imagePullPolicy: {{ $.Values.reporter.image.pullPolicy }}
+              command:
+                - industrial-ops-recovery-evidence
+                - --report
+                - /recovery/report.json
+                - --api-url
+                - {{ $.Values.reporter.apiUrl | quote }}
+                - --token-url
+                - {{ $.Values.reporter.tokenUrl | quote }}
+                - --client-id
+                - {{ $.Values.reporter.clientId | quote }}
+                - --client-secret-file
+                - /run/recovery-reporter/client-secret
+                - --ca-file
+                - /run/enterprise-ca/ca.crt
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: recovery-report
+                  mountPath: /recovery
+                  readOnly: true
+                - name: reporter-secret
+                  mountPath: /run/recovery-reporter
+                  readOnly: true
+                - name: enterprise-ca
+                  mountPath: /run/enterprise-ca
+                  readOnly: true
+          volumes:
+            - name: recovery-report
+              emptyDir:
+                sizeLimit: 1Mi
+            - name: verifier-secret
+              secret:
+                secretName: {{ .verifier.secretName }}
+            - name: reporter-secret
+              secret:
+                secretName: {{ $.Values.reporter.clientSecret.name }}
+                items:
+                  - key: {{ $.Values.reporter.clientSecret.key }}
+                    path: client-secret
+            - name: enterprise-ca
+              secret:
+                secretName: {{ $.Values.reporter.caSecret.name }}
+                items:
+                  - key: {{ $.Values.reporter.caSecret.key }}
+                    path: ca.crt
+{{- end }}

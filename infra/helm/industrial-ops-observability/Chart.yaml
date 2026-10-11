@@ -1,0 +1,6 @@
+apiVersion: v2
+name: industrial-ops-observability
+description: Industrial operations SLO rules, alerts, scrape discovery, and Grafana dashboard
+type: application
+version: 0.1.0
+appVersion: "1.0"

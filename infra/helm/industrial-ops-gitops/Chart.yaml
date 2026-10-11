@@ -1,0 +1,6 @@
+apiVersion: v2
+name: industrial-ops-gitops
+description: Argo CD app-of-apps bootstrap for the Industrial Ops AI platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,10 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: ioap-gpu-promotion-lab
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.32.2@sha256:142f543559cc55d64e1ab9341df08e5ced84bd2e893736da8f51320f26f5950b
+    extraMounts:
+      - hostPath: /home/codex/damoxing/artifacts/gpu-model-promotion-lab/gguf
+        containerPath: /var/local/ioap-gpu-promotion-lab/gguf
+        readOnly: true

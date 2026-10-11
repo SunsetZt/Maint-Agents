@@ -1,0 +1,76 @@
+{{- if .Values.workloads.api.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: industrial-ops-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "industrial-ops-application.selectorLabels" (dict "root" . "component" "api") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.services.api.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- if .Values.workloads.web.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: industrial-ops-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "industrial-ops-application.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.services.web.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- if .Values.workloads.workflowWorker.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: industrial-ops-workflow-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "industrial-ops-application.selectorLabels" (dict "root" . "component" "workflow-worker") | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.services.workflowWorker.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}
+{{- if .Values.workloads.eventWorker.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: industrial-ops-event-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "industrial-ops-application.selectorLabels" (dict "root" . "component" "event-worker") | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.services.eventWorker.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}
+

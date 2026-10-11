@@ -1,0 +1,162 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "industrial-ops-agent-platform"
+version = "0.1.0"
+description = "企业级多模态工业设备智能运维与售后 Agent 平台"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { text = "Proprietary" }
+authors = [{ name = "sunsetzt" }]
+dependencies = [
+  "a2a-sdk==1.1.2",
+  "alembic>=1.16,<2",
+  "confluent-kafka>=2.11,<3",
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "jsonschema>=4.23,<5",
+  "langgraph>=0.6,<2",
+  "mcp==2.0.0",
+  "minio>=7.2,<8",
+  "neo4j==6.2.0",
+  "openlineage-python>=1.36,<2",
+  "opensearch-py==3.2.0",
+  "opentelemetry-api>=1.44,<2",
+  "opentelemetry-sdk>=1.44,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.44,<2",
+  "pandas>=2.2,<3",
+  "pandera[pandas]>=0.25,<1",
+  "pgvector>=0.4,<1",
+  "prometheus-client>=0.22,<1",
+  "presidio-analyzer>=2.2.360,<3",
+  "presidio-anonymizer>=2.2.360,<3",
+  "psycopg[binary]>=3.2,<4",
+  "PyJWT[crypto]>=2.10,<3",
+  "pydantic-settings>=2.10,<3",
+  "pyarrow>=19,<24",
+  "pyspark==4.0.1",
+  "redis>=6.2,<7",
+  "sqlalchemy>=2.0,<3",
+  "structlog>=25.4,<26",
+  "temporalio>=1.12,<2",
+  "uvicorn>=0.35,<1",
+]
+
+[project.optional-dependencies]
+content-credentials = [
+  "c2pa-python>=0.37,<0.38",
+]
+data-pipeline = [
+  "pillow>=11,<13",
+]
+dev = [
+  "mypy>=1.17,<2",
+  "ruff>=0.12,<1",
+  "types-jsonschema>=4.23,<5",
+]
+local-ai = [
+  "docling>=2.45,<3",
+  "paddleocr>=3,<4",
+  "paddlepaddle>=3,<4",
+  "pillow>=11,<13",
+  "pypdfium2>=5,<6",
+  "zxing-cpp==3.1.1",
+]
+document = [
+  "docling>=2.45,<3",
+  "pillow>=11,<13",
+  "pypdfium2>=5,<6",
+]
+evaluation = [
+  "deepeval>=3,<5",
+  # Ragas 0.4 still imports the VertexAI compatibility module removed in 0.4.x.
+  "langchain-community==0.3.31",
+  "ragas>=0.3,<1",
+]
+training = [
+  "accelerate>=1.10,<2",
+  "bitsandbytes>=0.48,<1",
+  "datasets>=4,<5",
+  "deepspeed>=0.18,<1",
+  "diffusers>=0.39,<0.40",
+  "peft>=0.18,<1",
+  "pillow>=11,<13",
+  "safetensors>=0.6,<1",
+  "sentencepiece>=0.2,<1",
+  "sentence-transformers>=5,<6",
+  "soundfile>=0.13,<1",
+  "torch==2.10.0",
+  "transformers>=5.9,<=5.10.1",
+  "trl>=0.28,<1",
+]
+quantization = [
+  "llmcompressor==0.12.0.1",
+]
+realtime = [
+  "aiortc>=1.13,<2",
+  "av>=14,<17",
+]
+multimodal-video = [
+  "av>=14,<17",
+]
+
+[project.scripts]
+industrial-ops-api = "industrial_ops_agent.main:run"
+industrial-ops-data-pipeline = "industrial_ops_agent.data_pipeline.cli:run"
+industrial-ops-deployment-controller = "industrial_ops_agent.deployment.cli:run"
+industrial-ops-evaluation-worker = "industrial_ops_agent.evaluation.cli:run"
+industrial-ops-feedback-consumer = "industrial_ops_agent.event_worker.consumer:run"
+industrial-ops-telemetry-consumer = "industrial_ops_agent.predictive_maintenance.consumer:run"
+industrial-ops-telemetry-dataset = "industrial_ops_agent.predictive_maintenance.dataset_cli:run"
+industrial-ops-rul-dataset = "industrial_ops_agent.predictive_maintenance.rul_dataset_cli:run"
+industrial-ops-timeseries-runtime = "industrial_ops_agent.predictive_maintenance.timeseries_runtime:run"
+industrial-ops-rul-runtime = "industrial_ops_agent.predictive_maintenance.rul_runtime:run"
+industrial-ops-rul-promotion-lab = "industrial_ops_agent.predictive_maintenance.rul_promotion_lab:run"
+industrial-ops-reranker-runtime = "industrial_ops_agent.search_profiles.reranker_runtime:run"
+industrial-ops-embedding-runtime = "industrial_ops_agent.search_profiles.embedding_runtime:run"
+industrial-ops-synthetic-media = "industrial_ops_agent.training.synthetic_media_cli:run"
+industrial-ops-inference-benchmark = "industrial_ops_agent.model_gateway.benchmark_cli:run"
+industrial-ops-model-inspect = "industrial_ops_agent.training.model_inspect_cli:run"
+industrial-ops-supply-chain-verify = "industrial_ops_agent.supply_chain.cli:run"
+industrial-ops-staging-attestation-verify = "industrial_ops_agent.staging_acceptance.attestation_cli:run"
+industrial-ops-simulated-enterprise-closure = "industrial_ops_agent.simulation.closure_cli:run"
+industrial-ops-project-assurance-lab = "industrial_ops_agent.simulation.project_assurance_lab_cli:run"
+industrial-ops-maintenance-planning-value-lab = "industrial_ops_agent.simulation.maintenance_planning_value_lab_cli:run"
+industrial-ops-multimodal-dataset = "industrial_ops_agent.simulation.multimodal_fault_dataset_cli:run"
+industrial-ops-multimodal-platform-lab = "industrial_ops_agent.simulation.multimodal_platform_lab_cli:run"
+industrial-ops-simulated-vlm-training-lab = "industrial_ops_agent.simulation.vlm_training_lab_cli:run"
+industrial-ops-simulated-vlm-continuation-lab = "industrial_ops_agent.simulation.vlm_continuation_lab_cli:run"
+industrial-ops-enterprise-vlm-staging = "industrial_ops_agent.simulation.vlm_enterprise_staging_cli:run"
+industrial-ops-enterprise-project-adoption = "industrial_ops_agent.simulation.enterprise_project_adoption_cli:run"
+industrial-ops-enterprise-candidate-rollout = "industrial_ops_agent.simulation.enterprise_candidate_rollout_cli:run"
+industrial-ops-enterprise-candidate-kserve-acceptance = "industrial_ops_agent.simulation.enterprise_candidate_kserve_acceptance_cli:run"
+industrial-ops-enterprise-model-import-acceptance = "industrial_ops_agent.enterprise_assets.acceptance_cli:run"
+industrial-ops-asr-kserve-rollout = "industrial_ops_agent.simulation.asr_kserve_rollout_cli:run"
+industrial-ops-asr-kserve-acceptance = "industrial_ops_agent.simulation.asr_kserve_acceptance_cli:run"
+industrial-ops-media-server = "industrial_ops_agent.realtime_media.server:run"
+industrial-ops-retention = "industrial_ops_agent.knowledge.retention_cli:run"
+industrial-ops-recovery-evidence = "industrial_ops_agent.recovery.report_cli:run"
+industrial-ops-security-exercise-report = "industrial_ops_agent.assurance.report_cli:run"
+industrial-ops-training-image-acceptance = "industrial_ops_agent.training.image_acceptance_cli:run"
+industrial-ops-training-worker = "industrial_ops_agent.training.cli:run"
+industrial-ops-quantization-worker = "industrial_ops_agent.training.quantization_cli:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/industrial_ops_agent"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true

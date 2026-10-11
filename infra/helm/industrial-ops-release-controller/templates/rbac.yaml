@@ -1,0 +1,44 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "industrial-ops-release-controller.name" . }}
+  namespace: {{ .Values.releaseNamespace }}
+  labels:
+    {{- include "industrial-ops-release-controller.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["servingruntimes", "inferenceservices"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  - apiGroups: ["inference.networking.k8s.io"]
+    resources: ["inferencepools"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  {{- if .Values.leaderElection.enabled }}
+  # Kubernetes cannot restrict create by resourceNames because the object does
+  # not yet exist. Reads and mutations remain restricted to the configured Lease.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    resourceNames: [{{ .Values.leaderElection.leaseName | quote }}]
+    verbs: ["get", "patch", "update"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "industrial-ops-release-controller.name" . }}
+  namespace: {{ .Values.releaseNamespace }}
+  labels:
+    {{- include "industrial-ops-release-controller.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccountName }}
+    namespace: {{ .Values.releaseNamespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "industrial-ops-release-controller.name" . }}

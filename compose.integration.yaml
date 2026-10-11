@@ -1,0 +1,658 @@
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=4
+      - -c
+      - max_wal_senders=4
+
+  minio-init:
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        mc mb --ignore-existing local/industrial-ops-media >/dev/null
+        mc anonymous set none local/industrial-ops-media >/dev/null
+        mc mb --ignore-existing local/industrial-ops-datasets >/dev/null
+        mc anonymous set none local/industrial-ops-datasets >/dev/null
+
+  vault-bootstrap:
+    environment:
+      IOAP_LABEL_STUDIO_API_TOKEN: ${M3_LABEL_STUDIO_TOKEN:-m3-label-studio-local-token}
+      IOAP_NEO4J_PASSWORD: ${IOAP_NEO4J_PASSWORD:-local-graphrag-password}
+
+  api:
+    environment:
+      IOAP_DATASET_BUCKET: industrial-ops-datasets
+      IOAP_LABEL_STUDIO_URL: http://label-studio:8080
+      IOAP_LABEL_STUDIO_PROJECT_KEY: industrial-root-cause
+      IOAP_LABEL_STUDIO_PROJECT_ID: "1"
+      IOAP_OPENLINEAGE_URL: http://marquez:5000
+      IOAP_OPENLINEAGE_NAMESPACE: industrial-ops
+      IOAP_MLFLOW_TRACKING_URL: http://mlflow:5000
+      IOAP_GRAPH_RAG_ENABLED: "true"
+      IOAP_NEO4J_URI: neo4j://neo4j:7687
+      IOAP_NEO4J_DATABASE: neo4j
+      IOAP_NEO4J_USERNAME: neo4j
+      IOAP_KNOWLEDGE_SEARCH_PROFILES_ENABLED: "true"
+      IOAP_OPENSEARCH_URL: http://opensearch:9200
+      IOAP_OPENSEARCH_INDEX_PREFIX: ioap-knowledge
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+
+  workflow-worker:
+    environment:
+      IOAP_GRAPH_RAG_ENABLED: "true"
+      IOAP_NEO4J_URI: neo4j://neo4j:7687
+      IOAP_NEO4J_DATABASE: neo4j
+      IOAP_NEO4J_USERNAME: neo4j
+      IOAP_KNOWLEDGE_SEARCH_PROFILES_ENABLED: "true"
+      IOAP_OPENSEARCH_URL: http://opensearch:9200
+      IOAP_OPENSEARCH_INDEX_PREFIX: ioap-knowledge
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+
+  opensearch:
+    image: opensearchproject/opensearch:3.7.0
+    environment:
+      discovery.type: single-node
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    ports:
+      - "127.0.0.1:${M7_OPENSEARCH_PORT:-9200}:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks: [backend]
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:2026.06.0
+    environment:
+      NEO4J_AUTH: neo4j/${IOAP_NEO4J_PASSWORD:-local-graphrag-password}
+      IOAP_NEO4J_PASSWORD: ${IOAP_NEO4J_PASSWORD:-local-graphrag-password}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p '$${IOAP_NEO4J_PASSWORD:-local-graphrag-password}' 'RETURN 1' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    ports:
+      - "127.0.0.1:${M7_NEO4J_BROWSER_PORT:-7474}:7474"
+    volumes:
+      - neo4j-data:/data
+    networks: [backend]
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.15.1
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --allowed-hosts
+      - mlflow:5000,localhost:*
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --artifacts-destination
+      - /mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 8s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    ports:
+      - "127.0.0.1:${M4_MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - mlflow-data:/mlflow
+    networks: [backend]
+    restart: unless-stopped
+
+  training-image-acceptance:
+    profiles: [training, quantization]
+    image: industrial-ops/m4-training-worker:local
+    build:
+      context: .
+      dockerfile: docker/training-worker.Dockerfile
+      args:
+        IOAP_BUILD_GIT_COMMIT: ${IOAP_TRAINING_GIT_COMMIT:-}
+    command:
+      - industrial-ops-training-image-acceptance
+      - --precision
+      - ${IOAP_GPU_ACCEPTANCE_PRECISION:-bfloat16}
+      - --minimum-gpu-memory-gib
+      - ${IOAP_GPU_ACCEPTANCE_MIN_MEMORY_GIB:-0}
+      - --output
+      - /models/huggingface/ioap-gpu-acceptance.json
+    environment:
+      IOAP_TRAINING_GIT_COMMIT: ${IOAP_TRAINING_GIT_COMMIT:-}
+      IOAP_TRAINING_CONTAINER_DIGEST: ${IOAP_TRAINING_CONTAINER_DIGEST:-}
+      HF_HOME: /models/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      TRITON_CACHE_DIR: /tmp/triton
+      TORCH_EXTENSIONS_DIR: /tmp/torch-extensions
+      XDG_CACHE_HOME: /tmp/cache
+    volumes:
+      - huggingface-model-cache:/models/huggingface
+    networks: [backend]
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    gpus: all
+
+  training-worker:
+    profiles: [training]
+    image: industrial-ops/m4-training-worker:local
+    build:
+      context: .
+      dockerfile: docker/training-worker.Dockerfile
+      args:
+        IOAP_BUILD_GIT_COMMIT: ${IOAP_TRAINING_GIT_COMMIT:-}
+    environment:
+      IOAP_ENVIRONMENT: local
+      IOAP_SECRET_BACKEND: vault
+      IOAP_VAULT_ADDRESS: http://vault:8200
+      IOAP_VAULT_MOUNT: secret
+      IOAP_VAULT_PATH: industrial-ops/m1
+      IOAP_VAULT_TOKEN_FILE: /run/industrial-ops-secrets/vault-token
+      IOAP_MINIO_ENDPOINT: minio:9000
+      IOAP_MINIO_SECURE: "false"
+      IOAP_DATASET_BUCKET: industrial-ops-datasets
+      IOAP_MLFLOW_TRACKING_URL: http://mlflow:5000
+      IOAP_TRAINING_EXPERIMENT_ID: ${IOAP_TRAINING_EXPERIMENT_ID:-}
+      IOAP_TRAINING_TENANT_ID: ${IOAP_TRAINING_TENANT_ID:-tenant-demo}
+      IOAP_TRAINING_SUBJECT_ID: ${IOAP_TRAINING_SUBJECT_ID:-m4-training-worker}
+      IOAP_TRAINING_GIT_COMMIT: ${IOAP_TRAINING_GIT_COMMIT:-}
+      IOAP_TRAINING_CONTAINER_DIGEST: ${IOAP_TRAINING_CONTAINER_DIGEST:-}
+      IOAP_TRAINING_GPU_ACCEPTANCE_REPORT: /models/huggingface/ioap-gpu-acceptance.json
+      HF_HOME: /models/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      TRITON_CACHE_DIR: /tmp/triton
+      TORCH_EXTENSIONS_DIR: /tmp/torch-extensions
+      XDG_CACHE_HOME: /tmp/cache
+    depends_on:
+      training-image-acceptance:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+      postgres-runtime-bootstrap:
+        condition: service_completed_successfully
+      vault-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+      - huggingface-model-cache:/models/huggingface
+    networks: [backend]
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    gpus: all
+
+  quantization-worker:
+    profiles: [quantization]
+    image: industrial-ops/quantization-worker:local
+    build:
+      context: .
+      dockerfile: docker/quantization-worker.Dockerfile
+      args:
+        IOAP_BUILD_GIT_COMMIT: ${IOAP_TRAINING_GIT_COMMIT:-}
+    environment:
+      IOAP_ENVIRONMENT: local
+      IOAP_SECRET_BACKEND: vault
+      IOAP_VAULT_ADDRESS: http://vault:8200
+      IOAP_VAULT_MOUNT: secret
+      IOAP_VAULT_PATH: industrial-ops/m1
+      IOAP_VAULT_TOKEN_FILE: /run/industrial-ops-secrets/vault-token
+      IOAP_MINIO_ENDPOINT: minio:9000
+      IOAP_MINIO_SECURE: "false"
+      IOAP_DATASET_BUCKET: industrial-ops-datasets
+      IOAP_MLFLOW_TRACKING_URL: http://mlflow:5000
+      IOAP_TRAINING_EXPERIMENT_ID: ${IOAP_TRAINING_EXPERIMENT_ID:-}
+      IOAP_TRAINING_TENANT_ID: ${IOAP_TRAINING_TENANT_ID:-tenant-demo}
+      IOAP_TRAINING_SUBJECT_ID: ${IOAP_TRAINING_SUBJECT_ID:-quantization-worker}
+      IOAP_TRAINING_GIT_COMMIT: ${IOAP_TRAINING_GIT_COMMIT:-}
+      IOAP_TRAINING_CONTAINER_DIGEST: ${IOAP_TRAINING_CONTAINER_DIGEST:-}
+      IOAP_TRAINING_GPU_ACCEPTANCE_REPORT: /models/huggingface/ioap-gpu-acceptance.json
+      HF_HOME: /models/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    depends_on:
+      training-image-acceptance:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+      postgres-runtime-bootstrap:
+        condition: service_completed_successfully
+      vault-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+      - huggingface-model-cache:/models/huggingface
+    networks: [backend]
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    gpus: all
+
+  evaluation-worker:
+    profiles: [evaluation]
+    image: industrial-ops/quantization-worker:local
+    build:
+      context: .
+      dockerfile: docker/quantization-worker.Dockerfile
+      args:
+        IOAP_BUILD_GIT_COMMIT: ${IOAP_EVALUATION_GIT_COMMIT:-}
+    command: ["industrial-ops-evaluation-worker"]
+    environment:
+      IOAP_ENVIRONMENT: local
+      IOAP_SECRET_BACKEND: vault
+      IOAP_VAULT_ADDRESS: http://vault:8200
+      IOAP_VAULT_MOUNT: secret
+      IOAP_VAULT_PATH: industrial-ops/m1
+      IOAP_VAULT_TOKEN_FILE: /run/industrial-ops-secrets/vault-token
+      IOAP_MINIO_ENDPOINT: minio:9000
+      IOAP_MINIO_SECURE: "false"
+      IOAP_DATASET_BUCKET: industrial-ops-datasets
+      IOAP_EVALUATION_JOB_ID: ${IOAP_EVALUATION_JOB_ID:-}
+      IOAP_EVALUATION_TENANT_ID: ${IOAP_EVALUATION_TENANT_ID:-tenant-demo}
+      IOAP_EVALUATION_SUBJECT_ID: ${IOAP_EVALUATION_SUBJECT_ID:-m4-model-evaluator}
+      IOAP_EVALUATION_GIT_COMMIT: ${IOAP_EVALUATION_GIT_COMMIT:-}
+      IOAP_EVALUATION_CONTAINER_DIGEST: ${IOAP_EVALUATION_CONTAINER_DIGEST:-}
+      HF_HOME: /models/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+      RAGAS_DO_NOT_TRACK: "true"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      postgres-runtime-bootstrap:
+        condition: service_completed_successfully
+      vault-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+      - huggingface-model-cache:/models/huggingface
+    networks: [backend]
+    restart: "no"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    gpus: all
+
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null"]
+      interval: 8s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks: [backend]
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        /opt/kafka/bin/kafka-topics.sh \
+          --bootstrap-server kafka:9092 \
+          --create --if-not-exists \
+          --topic ops.work-order.v1 \
+          --partitions 6 \
+          --replication-factor 1 \
+          --config cleanup.policy=delete \
+          --config retention.ms=604800000
+        /opt/kafka/bin/kafka-topics.sh \
+          --bootstrap-server kafka:9092 \
+          --create --if-not-exists \
+          --topic ops.telemetry.v1 \
+          --partitions 12 \
+          --replication-factor 1 \
+          --config cleanup.policy=delete \
+          --config retention.ms=2592000000
+    networks: [backend]
+    restart: "no"
+
+  debezium:
+    image: quay.io/debezium/connect:3.6
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: industrial-ops-debezium
+      CONFIG_STORAGE_TOPIC: industrial-ops.connect.configs
+      OFFSET_STORAGE_TOPIC: industrial-ops.connect.offsets
+      STATUS_STORAGE_TOPIC: industrial-ops.connect.status
+      CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_CONFIG_PROVIDERS: env
+      CONNECT_CONFIG_PROVIDERS_ENV_CLASS: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+      ENABLE_OTEL: "true"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:?runtime environment missing POSTGRES_DB}
+      DEBEZIUM_DATABASE_USER: ${POSTGRES_USER:?runtime environment missing POSTGRES_USER}
+      DEBEZIUM_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?runtime environment missing POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8083/connectors >/dev/null"]
+      interval: 8s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [backend]
+    restart: unless-stopped
+
+  debezium-init:
+    image: curlimages/curl:8.16.0
+    depends_on:
+      debezium:
+        condition: service_healthy
+    environment:
+      DEBEZIUM_URL: http://debezium:8083
+    entrypoint: ["/bin/sh", "/bootstrap/register.sh"]
+    volumes:
+      - ./infra/debezium/register.sh:/bootstrap/register.sh:ro
+      - ./infra/debezium/connectors/industrial-ops-outbox.json:/bootstrap/connector.json:ro
+    networks: [backend]
+    restart: "no"
+
+  event-worker:
+    image: industrial-ops/m3-event-worker:local
+    build:
+      context: .
+      dockerfile: docker/event-worker.Dockerfile
+    environment:
+      IOAP_ENVIRONMENT: local
+      IOAP_SECRET_BACKEND: vault
+      IOAP_VAULT_ADDRESS: http://vault:8200
+      IOAP_VAULT_MOUNT: secret
+      IOAP_VAULT_PATH: industrial-ops/m1
+      IOAP_VAULT_TOKEN_FILE: /run/industrial-ops-secrets/vault-token
+      IOAP_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      IOAP_KAFKA_WORK_ORDER_TOPIC: ops.work-order.v1
+      IOAP_KAFKA_FEEDBACK_CONSUMER_GROUP: industrial-ops-m3-feedback-v1
+    depends_on:
+      debezium-init:
+        condition: service_completed_successfully
+      vault-bootstrap:
+        condition: service_completed_successfully
+      postgres-runtime-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  telemetry-worker:
+    image: industrial-ops/m3-event-worker:local
+    build:
+      context: .
+      dockerfile: docker/event-worker.Dockerfile
+    command: ["industrial-ops-telemetry-consumer"]
+    environment:
+      IOAP_ENVIRONMENT: local
+      IOAP_SECRET_BACKEND: vault
+      IOAP_VAULT_ADDRESS: http://vault:8200
+      IOAP_VAULT_MOUNT: secret
+      IOAP_VAULT_PATH: industrial-ops/m1
+      IOAP_VAULT_TOKEN_FILE: /run/industrial-ops-secrets/vault-token
+      IOAP_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      IOAP_KAFKA_TELEMETRY_TOPIC: ops.telemetry.v1
+      IOAP_KAFKA_TELEMETRY_CONSUMER_GROUP: industrial-ops-m7-telemetry-v1
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      vault-bootstrap:
+        condition: service_completed_successfully
+      postgres-runtime-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  label-studio:
+    image: heartexlabs/label-studio:1.23.0
+    environment:
+      LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK: "true"
+      LABEL_STUDIO_USERNAME: m3-data-steward@local.invalid
+      LABEL_STUDIO_PASSWORD: ${M3_LABEL_STUDIO_PASSWORD:-m3-label-studio-local-password}
+      LABEL_STUDIO_USER_TOKEN: ${M3_LABEL_STUDIO_TOKEN:-m3-label-studio-local-token}
+      LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/health"]
+      interval: 8s
+      timeout: 5s
+      retries: 45
+      start_period: 30s
+    ports:
+      - "127.0.0.1:${M3_LABEL_STUDIO_PORT:-8081}:8080"
+    volumes:
+      - label-studio-data:/label-studio/data
+    networks: [backend]
+    restart: unless-stopped
+
+  label-studio-init:
+    image: curlimages/curl:8.16.0
+    depends_on:
+      label-studio:
+        condition: service_healthy
+    environment:
+      LABEL_STUDIO_URL: http://label-studio:8080
+      LABEL_STUDIO_USER_TOKEN: ${M3_LABEL_STUDIO_TOKEN:-m3-label-studio-local-token}
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap.sh"]
+    volumes:
+      - ./infra/label-studio/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+      - ./infra/label-studio/project.json:/bootstrap/project.json:ro
+    networks: [backend]
+    restart: "no"
+
+  marquez-db-init:
+    image: pgvector/pgvector:0.8.5-pg16-bookworm
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:?runtime environment missing POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?runtime environment missing POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:?runtime environment missing POSTGRES_USER}
+      MARQUEZ_DB: marquez
+      MARQUEZ_USER: marquez
+      MARQUEZ_PASSWORD: marquez
+    entrypoint: ["/bin/sh", "/bootstrap/init-db.sh"]
+    volumes:
+      - ./infra/openlineage/init-db.sh:/bootstrap/init-db.sh:ro
+    networks: [backend]
+    restart: "no"
+
+  marquez:
+    image: marquezproject/marquez:0.50.0
+    environment:
+      MARQUEZ_PORT: "5000"
+      MARQUEZ_ADMIN_PORT: "5001"
+      SEARCH_ENABLED: "false"
+    depends_on:
+      marquez-db-init:
+        condition: service_completed_successfully
+    entrypoint: ["./entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:5001/healthcheck"]
+      interval: 8s
+      timeout: 5s
+      retries: 45
+      start_period: 30s
+    networks: [backend]
+    restart: unless-stopped
+
+  spark-volume-init:
+    image: industrial-ops/m3-data-worker:local
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 10001:10001 /opt/spark/shared"]
+    volumes:
+      - spark-shared:/opt/spark/shared
+    networks: [backend]
+    restart: "no"
+
+  spark-master:
+    image: industrial-ops/m3-data-worker:local
+    build:
+      context: .
+      dockerfile: docker/data-worker.Dockerfile
+    command: ["spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-master", "--port", "7077", "--webui-port", "8080"]
+    depends_on:
+      spark-volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; socket.create_connection(('spark-master',7077),2).close()\""]
+      interval: 8s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    volumes:
+      - spark-shared:/opt/spark/shared
+    networks: [backend]
+    restart: unless-stopped
+
+  spark-worker:
+    image: industrial-ops/m3-data-worker:local
+    command: ["spark-class", "org.apache.spark.deploy.worker.Worker", "--work-dir", "/opt/spark/shared/worker", "spark://spark-master:7077"]
+    environment:
+      SPARK_WORKER_CORES: "2"
+      SPARK_WORKER_MEMORY: 2g
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    volumes:
+      - spark-shared:/opt/spark/shared
+    networks: [backend]
+    restart: unless-stopped
+
+  data-worker:
+    image: industrial-ops/m3-data-worker:local
+    build:
+      context: .
+      dockerfile: docker/data-worker.Dockerfile
+    environment:
+      IOAP_ENVIRONMENT: local
+      IOAP_PIPELINE_TENANT_ID: ${IOAP_PIPELINE_TENANT_ID:-tenant-demo}
+      IOAP_CODE_VERSION: ${IOAP_CODE_VERSION:-local}
+      IOAP_SECRET_BACKEND: environment
+      IOAP_DATABASE_URL: ${IOAP_DATABASE_URL:?runtime environment missing IOAP_DATABASE_URL}
+      IOAP_MINIO_ENDPOINT: minio:9000
+      IOAP_MINIO_SECURE: "false"
+      IOAP_MINIO_BUCKET: industrial-ops-media
+      IOAP_DATASET_BUCKET: industrial-ops-datasets
+      IOAP_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?runtime environment missing MINIO_ROOT_USER}
+      IOAP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?runtime environment missing MINIO_ROOT_PASSWORD}
+      IOAP_LABEL_STUDIO_URL: http://label-studio:8080
+      IOAP_LABEL_STUDIO_API_TOKEN: ${M3_LABEL_STUDIO_TOKEN:-m3-label-studio-local-token}
+      IOAP_OPENLINEAGE_URL: http://marquez:5000
+      IOAP_OPENLINEAGE_NAMESPACE: industrial-ops
+      IOAP_DATASET_PIPELINE_ENGINE: spark
+      IOAP_SPARK_MASTER_URL: spark://spark-master:7077
+      IOAP_SPARK_DRIVER_HOST: data-worker
+      TMPDIR: /opt/spark/shared
+    depends_on:
+      label-studio-init:
+        condition: service_completed_successfully
+      marquez:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      spark-worker:
+        condition: service_started
+      postgres-runtime-bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v2/monitor/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 45
+      start_period: 45s
+    ports:
+      - "127.0.0.1:${M3_AIRFLOW_PORT:-8082}:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - ./scripts/m3_integration_probe.py:/opt/industrial-ops/m3_integration_probe.py:ro
+      - airflow-data:/opt/airflow
+      - spark-shared:/opt/spark/shared
+    networks: [backend]
+    restart: unless-stopped
+
+volumes:
+  neo4j-data:
+  opensearch-data:
+  kafka-data:
+  label-studio-data:
+  airflow-data:
+  spark-shared:
+  mlflow-data:
+  huggingface-model-cache:

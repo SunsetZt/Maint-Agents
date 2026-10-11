@@ -1,0 +1,313 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- range .Values.namespaces }}
+{{- if ne .quotaProfile "none" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.dnsNamespace }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- if ne .name $.Values.networkPolicy.observabilityNamespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-scrape
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.observabilityNamespace }}
+      ports:
+        {{- range $.Values.networkPolicy.metricsPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if has .name $.Values.networkPolicy.dataConsumerNamespaces }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-data-services
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.dataNamespace }}
+      ports:
+        {{- range $.Values.networkPolicy.dataPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if eq .name $.Values.networkPolicy.dataNamespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-data-consumers
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  {{- toYaml $.Values.networkPolicy.dataConsumerNamespaces | nindent 18 }}
+      ports:
+        {{- range $.Values.networkPolicy.dataPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if has .name $.Values.networkPolicy.securityConsumerNamespaces }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-security-services
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.securityNamespace }}
+      ports:
+        {{- range $.Values.networkPolicy.securityPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if eq .name $.Values.networkPolicy.recoveryNamespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-recovery-evidence-api
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.applicationNamespace }}
+      ports:
+        {{- range $.Values.networkPolicy.applicationPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-recovery-model-smoke
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.gateway.namespace }}
+      ports:
+        {{- range $.Values.networkPolicy.modelPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if eq .name $.Values.networkPolicy.applicationNamespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-recovery-evidence-ingress
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.recoveryNamespace }}
+      ports:
+        {{- range $.Values.networkPolicy.applicationPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if eq .name $.Values.networkPolicy.securityNamespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-security-consumers
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  {{- toYaml $.Values.networkPolicy.securityConsumerNamespaces | nindent 18 }}
+      ports:
+        {{- range $.Values.networkPolicy.securityPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if eq .name $.Values.networkPolicy.observabilityNamespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-platform-metrics-egress
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: industrial-ops-agent-platform
+      ports:
+        {{- range $.Values.networkPolicy.metricsPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- if eq .name $.Values.gateway.namespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-model-inference-mesh
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .name }}
+      ports:
+        {{- range $.Values.networkPolicy.modelPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .name }}
+      ports:
+        {{- range $.Values.networkPolicy.modelPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-model-serving
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              industrial-ops.ai/gateway-access: "true"
+      ports:
+        {{- range $.Values.networkPolicy.modelPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.dataNamespace }}
+      ports:
+        {{- range $.Values.networkPolicy.dataPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

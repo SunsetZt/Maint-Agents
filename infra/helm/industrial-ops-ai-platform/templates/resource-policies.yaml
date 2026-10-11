@@ -1,0 +1,33 @@
+{{- range .Values.namespaces }}
+{{- if ne .quotaProfile "none" }}
+{{- $quota := index $.Values.quotaProfiles .quotaProfile }}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: industrial-ops-quota
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  hard:
+    {{- range $resource, $value := $quota }}
+    {{ $resource | quote }}: {{ $value | quote }}
+    {{- end }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: industrial-ops-container-defaults
+  namespace: {{ .name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        {{- toYaml $.Values.defaultContainerResources.requests | nindent 8 }}
+      default:
+        {{- toYaml $.Values.defaultContainerResources.limits | nindent 8 }}
+{{- end }}
+{{- end }}

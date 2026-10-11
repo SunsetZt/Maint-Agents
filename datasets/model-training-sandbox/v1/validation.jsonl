@@ -1,0 +1,3 @@
+{"schema_version":"model-training-sandbox-case/v1","case_id":"validation-pump-vibration-001","split":"validation","prompt":"设备 泵 H 高频 振动 升高 温度 正常 应检查 什么","completion":"检查 轴承 润滑 与 对中 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"validation-motor-temperature-002","split":"validation","prompt":"设备 电机 D 温度 升高 电流 正常 应检查 什么","completion":"检查 冷却 风道 环境 与 传感器 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"validation-filter-003","split":"validation","prompt":"设备 泵 I 流量 下降 压差 升高 应检查 什么","completion":"检查 过滤器 堵塞 与 管路 禁止 自动 控制","risk_level":"LOW"}

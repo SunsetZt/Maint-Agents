@@ -1,0 +1,12 @@
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-pump-vibration-001","split":"train","prompt":"设备 泵 A 出现 高频 振动 温度 正常 应检查 什么","completion":"检查 轴承 润滑 与 对中 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-pump-temperature-002","split":"train","prompt":"设备 泵 B 轴承 温度 升高 振动 升高 应检查 什么","completion":"检查 轴承 润滑 冷却 与 负载 禁止 自动 控制","risk_level":"HIGH"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-motor-current-003","split":"train","prompt":"设备 电机 A 电流 升高 转速 下降 应检查 什么","completion":"检查 负载 联轴器 与 电源 禁止 自动 控制","risk_level":"HIGH"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-valve-pressure-004","split":"train","prompt":"设备 阀门 A 压力 下降 流量 下降 应检查 什么","completion":"检查 阀位 泄漏 与 过滤器 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-fan-vibration-005","split":"train","prompt":"设备 风机 A 低频 振动 升高 应检查 什么","completion":"检查 不平衡 松动 与 对中 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-bearing-noise-006","split":"train","prompt":"设备 泵 C 轴承 噪声 升高 温度 升高 应检查 什么","completion":"检查 轴承 磨损 润滑 与 间隙 禁止 自动 控制","risk_level":"HIGH"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-filter-flow-007","split":"train","prompt":"设备 泵 D 流量 下降 压差 升高 应检查 什么","completion":"检查 过滤器 堵塞 与 管路 禁止 自动 控制","risk_level":"LOW"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-seal-leak-008","split":"train","prompt":"设备 泵 E 密封 泄漏 压力 正常 应检查 什么","completion":"检查 密封 磨损 安装 与 冲洗 禁止 自动 控制","risk_level":"HIGH"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-coupling-009","split":"train","prompt":"设备 电机 B 振动 升高 联轴器 温度 升高 应检查 什么","completion":"检查 联轴器 对中 松动 与 润滑 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-cooling-010","split":"train","prompt":"设备 电机 C 温度 升高 电流 正常 应检查 什么","completion":"检查 冷却 风道 环境 与 传感器 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-cavitation-011","split":"train","prompt":"设备 泵 F 噪声 升高 压力 波动 应检查 什么","completion":"检查 汽蚀 入口 压力 与 过滤器 禁止 自动 控制","risk_level":"HIGH"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"train-sensor-012","split":"train","prompt":"设备 泵 G 温度 突变 其他 信号 正常 应检查 什么","completion":"检查 传感器 接线 校准 与 数据 质量 禁止 自动 控制","risk_level":"LOW"}

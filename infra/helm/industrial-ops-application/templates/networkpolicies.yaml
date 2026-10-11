@@ -1,0 +1,96 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: industrial-ops-application-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: industrial-ops-agent-platform
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - {protocol: TCP, port: {{ .Values.services.api.port }}}
+        - {protocol: TCP, port: {{ .Values.services.web.port }}}
+        - {protocol: TCP, port: {{ .Values.services.workflowWorker.metricsPort }}}
+        - {protocol: TCP, port: {{ .Values.services.eventWorker.metricsPort }}}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gatewayNamespace }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.services.web.port }}}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.observabilityNamespace }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.services.api.port }}}
+        - {protocol: TCP, port: {{ .Values.services.workflowWorker.metricsPort }}}
+        - {protocol: TCP, port: {{ .Values.services.eventWorker.metricsPort }}}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.recoveryNamespace }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.services.api.port }}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: industrial-ops-application-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: industrial-ops-agent-platform
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dnsNamespace }}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - podSelector: {}
+      ports:
+        - {protocol: TCP, port: {{ .Values.services.api.port }}}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace }}
+      ports:
+        {{- range .Values.networkPolicy.dataPorts }}
+        - {protocol: TCP, port: {{ . }}}
+        {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.securityNamespace }}
+      ports:
+        {{- range .Values.networkPolicy.securityPorts }}
+        - {protocol: TCP, port: {{ . }}}
+        {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.modelNamespace }}
+      ports:
+        {{- range .Values.networkPolicy.modelPorts }}
+        - {protocol: TCP, port: {{ . }}}
+        {{- end }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - {protocol: TCP, port: 443}
+{{- end }}

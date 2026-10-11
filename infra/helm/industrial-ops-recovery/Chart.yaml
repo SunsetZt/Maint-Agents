@@ -1,0 +1,6 @@
+apiVersion: v2
+name: industrial-ops-recovery
+description: Isolated recovery verification jobs and governed evidence reporting
+type: application
+version: 0.1.0
+appVersion: "1.0"

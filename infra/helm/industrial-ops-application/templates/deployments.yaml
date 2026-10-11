@@ -1,0 +1,238 @@
+{{- $root := . -}}
+{{- $workloads := list
+  (dict "key" "api" "name" "api" "workload" .Values.workloads.api "image" .Values.images.api "command" (list "industrial-ops-api"))
+  (dict "key" "web" "name" "web" "workload" .Values.workloads.web "image" .Values.images.web)
+  (dict "key" "mediaWorker" "name" "media-worker" "workload" .Values.workloads.mediaWorker "image" .Values.images.mediaWorker "command" (list "python" "-m" "industrial_ops_agent.media.runner"))
+  (dict "key" "workflowWorker" "name" "workflow-worker" "workload" .Values.workloads.workflowWorker "image" .Values.images.workflowWorker "command" (list "python" "-m" "industrial_ops_agent.orchestration.runner"))
+  (dict "key" "eventWorker" "name" "event-worker" "workload" .Values.workloads.eventWorker "image" .Values.images.eventWorker "command" (list "industrial-ops-feedback-consumer"))
+-}}
+{{- range $item := $workloads }}
+{{- if $item.workload.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "industrial-ops-%s" $item.name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" $root | nindent 4 }}
+    {{- include "industrial-ops-application.workloadLabels" (dict "root" $root "component" $item.name) | nindent 4 }}
+spec:
+  {{- if not (eq (toString $root.Values.autoscaling.enabled) "true") }}
+  replicas: {{ $item.workload.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "industrial-ops-application.selectorLabels" (dict "root" $root "component" $item.name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "industrial-ops-application.workloadLabels" (dict "root" $root "component" $item.name) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $root.Values.serviceAccount.name }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: {{ $root.Values.topologySpread.maxSkew }}
+          minDomains: {{ $root.Values.topologySpread.minDomains }}
+          topologyKey: {{ $root.Values.topologySpread.topologyKey }}
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              {{- include "industrial-ops-application.selectorLabels" (dict "root" $root "component" $item.name) | nindent 14 }}
+      containers:
+        - name: {{ $item.name }}
+          image: "{{ $item.image.repository }}@{{ $item.image.digest }}"
+          imagePullPolicy: {{ $item.image.pullPolicy }}
+          {{- with $item.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if eq $item.key "api" }}
+          ports:
+            - name: http
+              containerPort: {{ $root.Values.services.api.port }}
+              protocol: TCP
+          {{- else if eq $item.key "web" }}
+          ports:
+            - name: http
+              containerPort: {{ $root.Values.services.web.port }}
+              protocol: TCP
+          {{- else if eq $item.key "workflowWorker" }}
+          ports:
+            - name: metrics
+              containerPort: {{ $root.Values.services.workflowWorker.metricsPort }}
+              protocol: TCP
+          {{- else if eq $item.key "eventWorker" }}
+          ports:
+            - name: metrics
+              containerPort: {{ $root.Values.services.eventWorker.metricsPort }}
+              protocol: TCP
+          {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ $root.Values.runtime.configMapName }}
+            {{- if ne $item.key "web" }}
+            - secretRef:
+                name: {{ $root.Values.runtime.secretName }}
+            {{- end }}
+          {{- if ne $item.key "web" }}
+          env:
+            - name: IOAP_SECRET_BACKEND
+              value: environment
+            {{- if eq $item.key "mediaWorker" }}
+            - name: IOAP_WORKER_READY_FILE
+              value: /tmp/media-worker-ready
+            {{- else if eq $item.key "workflowWorker" }}
+            - name: IOAP_WORKER_READY_FILE
+              value: /tmp/workflow-worker-ready
+            - name: IOAP_WORKFLOW_WORKER_METRICS_PORT
+              value: {{ $root.Values.services.workflowWorker.metricsPort | quote }}
+            {{- else if eq $item.key "eventWorker" }}
+            - name: IOAP_EVENT_WORKER_METRICS_PORT
+              value: {{ $root.Values.services.eventWorker.metricsPort | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if eq $item.key "api" }}
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: {{ $root.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: {{ $root.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: {{ $root.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.liveness.failureThreshold }}
+          {{- else if eq $item.key "web" }}
+          startupProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: {{ $root.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: {{ $root.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.readiness.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: {{ $root.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.liveness.failureThreshold }}
+          {{- else if eq $item.key "mediaWorker" }}
+          startupProbe:
+            exec:
+              command: ["test", "-f", "/tmp/media-worker-ready"]
+            periodSeconds: {{ $root.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/media-worker-ready"]
+            periodSeconds: {{ $root.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.readiness.failureThreshold }}
+          livenessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/media-worker-ready"]
+            periodSeconds: {{ $root.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.liveness.failureThreshold }}
+          {{- else if eq $item.key "workflowWorker" }}
+          startupProbe:
+            exec:
+              command: ["test", "-f", "/tmp/workflow-worker-ready"]
+            periodSeconds: {{ $root.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/workflow-worker-ready"]
+            periodSeconds: {{ $root.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.readiness.failureThreshold }}
+          livenessProbe:
+            tcpSocket:
+              port: metrics
+            periodSeconds: {{ $root.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.liveness.failureThreshold }}
+          {{- else }}
+          startupProbe:
+            tcpSocket:
+              port: metrics
+            periodSeconds: {{ $root.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.startup.failureThreshold }}
+          readinessProbe:
+            tcpSocket:
+              port: metrics
+            periodSeconds: {{ $root.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.readiness.failureThreshold }}
+          livenessProbe:
+            tcpSocket:
+              port: metrics
+            periodSeconds: {{ $root.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml $item.workload.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            {{- if eq $item.key "web" }}
+            - name: web-secret
+              mountPath: /run/industrial-ops-secrets/nextauth-secret
+              subPath: nextauth-secret
+              readOnly: true
+            {{- else }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+        {{- if eq $item.key "web" }}
+        - name: web-secret
+          secret:
+            secretName: {{ $root.Values.runtime.secretName }}
+            items:
+              - key: {{ $root.Values.runtime.nextAuthSecretKey }}
+                path: nextauth-secret
+        {{- end }}
+{{- end }}
+{{- end }}

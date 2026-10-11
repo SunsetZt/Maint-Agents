@@ -1,0 +1,219 @@
+highAvailability:
+  enabled: true
+
+topologySpread:
+  topologyKey: kubernetes.io/hostname
+  minDomains: 2
+  maxSkew: 1
+
+runtime:
+  configMapName: ""
+  secretName: ""
+  nextAuthSecretKey: nextauth-secret
+
+serviceAccount:
+  create: true
+  name: industrial-ops-application
+
+images:
+  api:
+    repository: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  web:
+    repository: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  mediaWorker:
+    repository: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  workflowWorker:
+    repository: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  eventWorker:
+    repository: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+
+workloads:
+  api:
+    enabled: true
+    replicaCount: 2
+    podDisruptionBudget:
+      minAvailable: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+  web:
+    enabled: true
+    replicaCount: 2
+    podDisruptionBudget:
+      minAvailable: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  mediaWorker:
+    enabled: true
+    replicaCount: 2
+    podDisruptionBudget:
+      minAvailable: 1
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "4"
+        memory: 6Gi
+  workflowWorker:
+    enabled: true
+    replicaCount: 2
+    podDisruptionBudget:
+      minAvailable: 1
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+  eventWorker:
+    enabled: true
+    replicaCount: 2
+    podDisruptionBudget:
+      minAvailable: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+autoscaling:
+  enabled: false
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Max
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      selectPolicy: Min
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+  hpa:
+    api:
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+    web:
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+    mediaWorker:
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: 80
+  keda:
+    pollingInterval: 30
+    cooldownPeriod: 300
+    workflowWorker:
+      minReplicaCount: 2
+      maxReplicaCount: 10
+      fallback:
+        failureThreshold: 3
+        replicas: 2
+      temporal:
+        endpoint: temporal.industrial-data.svc:7233
+        namespace: default
+        taskQueue: industrial-ops-m2
+        queueTypes: workflow,activity
+        targetQueueSize: 5
+        activationTargetQueueSize: 0
+    eventWorker:
+      minReplicaCount: 2
+      maxReplicaCount: 10
+      fallback:
+        failureThreshold: 3
+        replicas: 2
+      kafka:
+        bootstrapServers: kafka.industrial-data.svc:9092
+        topic: ops.work-order.v1
+        consumerGroup: industrial-ops-m3-feedback-v1
+        lagThreshold: 20
+        activationLagThreshold: 1
+        offsetResetPolicy: latest
+        allowIdleConsumers: false
+        scaleToZeroOnInvalidOffset: false
+
+probes:
+  startup:
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 30
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  liveness:
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+services:
+  api:
+    port: 8000
+  web:
+    port: 3000
+  workflowWorker:
+    metricsPort: 9101
+  eventWorker:
+    metricsPort: 9102
+
+migration:
+  enabled: true
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+
+gateway:
+  enabled: false
+  className: ""
+  hostname: ""
+  tlsSecretName: ""
+
+networkPolicy:
+  enabled: true
+  gatewayNamespace: envoy-gateway-system
+  observabilityNamespace: industrial-observability
+  recoveryNamespace: industrial-recovery
+  dataNamespace: industrial-data
+  securityNamespace: industrial-security
+  modelNamespace: industrial-models
+  dnsNamespace: kube-system
+  dataPorts: [5432, 6379, 9000, 9092, 7233]
+  securityPorts: [8080, 8181, 8200, 3310]
+  modelPorts: [443, 8000, 8080]

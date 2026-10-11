@@ -1,0 +1,43 @@
+image:
+  repository: registry.example.com/industrial-ops-agent-platform
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+releaseNamespace: industrial-models
+serviceAccountName: industrial-ops-release-controller
+leaderElection:
+  enabled: true
+  leaseName: industrial-ops-release-controller
+  leaseDurationSeconds: 15
+  renewDeadlineSeconds: 10
+  retryPeriodSeconds: 2
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+controller:
+  tenantId: tenant-industrial
+  subjectId: m5-deployment-controller
+  intervalSeconds: 30
+  observationIntervalSeconds: 60
+  opaDecisionUrl: http://opa.industrial-ops.svc:8181/v1/data/industrial_ops/authz/result
+  prometheusUrl: http://prometheus.monitoring.svc:9090
+  kubernetesApiUrl: https://kubernetes.default.svc
+
+runtimeSecret:
+  name: industrial-ops-release-controller
+  databaseUrlKey: database-url
+  auditHashKey: oidc-client-secret
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+networkPolicy:
+  enabled: true

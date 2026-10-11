@@ -1,0 +1,103 @@
+{
+  "schema_version": "diagnosis-supplement-review/v1",
+  "batch_id": "diagnosis-supplement-review-v1",
+  "created_on": "2026-09-08",
+  "status": "CONTENT_REVIEW_REQUIRED",
+  "provenance": "PROJECT_GENERATED",
+  "intended_environment": "PROJECT_STAGING_REAL",
+  "production_claim": false,
+  "preparation_authorization": {
+    "status": "AUTHORIZED",
+    "source": "CURRENT_USER_CONVERSATION",
+    "scope": "PREPARE_DRAFT_ONLY"
+  },
+  "content_review": {
+    "status": "PENDING",
+    "reviewer_id": null,
+    "reviewed_at": null,
+    "decision": null
+  },
+  "proposed_usage": [
+    "LOCAL_TRAINING",
+    "LOCAL_EVALUATION"
+  ],
+  "usage_note": "Draft preparation only. No registration or training authorization is inferred from this draft.",
+  "workflow_state": {
+    "registered": false,
+    "training_started": false,
+    "evaluation_started": false,
+    "business_binding_changed": false
+  },
+  "draft_files": [
+    {
+      "split": "train",
+      "path": "docs/m5-release/datasets/diagnosis-supplement-review-v1/train.draft.jsonl",
+      "count": 12,
+      "sha256": "ff9507493f036d6e0498728415bd8043faccb8cf51dcda9491fcff21cc9b4956",
+      "conflict_count": 8,
+      "completed_count": 2,
+      "nonconflict_missing_count": 2
+    },
+    {
+      "split": "validation",
+      "path": "docs/m5-release/datasets/diagnosis-supplement-review-v1/validation.draft.jsonl",
+      "count": 4,
+      "sha256": "7bab0a9dad329cfe5af282ba44d65ed81db361e4c239900e1fa8f8bdda2f86c2",
+      "conflict_count": 3,
+      "completed_count": 1,
+      "nonconflict_missing_count": 0
+    }
+  ],
+  "original_files": [
+    {
+      "split": "train",
+      "path": "artifacts/diagnosis-sft-alignment-20260908/train.jsonl",
+      "count": 18,
+      "sha256": "587b70b4baa44fb0b4991ba76ab6f0b040a560a129f99f3eda4d82e29ce23923",
+      "unchanged": true
+    },
+    {
+      "split": "validation",
+      "path": "artifacts/diagnosis-sft-alignment-20260908/validation.jsonl",
+      "count": 6,
+      "sha256": "b0164a7c623c2aa8272ca43aba0b6e71c2740882385ffcd1fec12606e194e81f",
+      "unchanged": true
+    },
+    {
+      "split": "gold",
+      "path": "artifacts/diagnosis-sft-alignment-20260908/gold.jsonl",
+      "count": 30,
+      "sha256": "3c88c7f16866dddb53c43485c7534781480054f64608efcfa4f286513e138814",
+      "unchanged": true
+    }
+  ],
+  "proposed_counts_after_review": {
+    "train": 30,
+    "validation": 10,
+    "existing_gold": 30
+  },
+  "source_policy": {
+    "synthetic_references_only": true,
+    "new_case_ids_and_groups_disjoint_from_existing": true,
+    "gold_answers_used_for_drafting": false,
+    "original_gold_handling": "UNCHANGED; previously observed set remains a regression comparison, not a new blind evaluation.",
+    "content_checksum_algorithm": "SHA256_UTF8_EXACT_CONTENT",
+    "completed_status_meaning": "Diagnosis report target only; never work-order completion.",
+    "confidence_label_meaning": "Illustrative synthetic target label, not calibrated probability."
+  },
+  "format_check": {
+    "status": "PASS",
+    "checked_on": "2026-09-08",
+    "checks": [
+      "JSON_PARSE",
+      "EXACT_SEVEN_TARGET_FIELDS",
+      "INDIVIDUAL_AUTHORIZED_CITATION_IDS",
+      "EVIDENCE_CONTENT_SHA256",
+      "ID_AND_GROUP_DISJOINTNESS",
+      "PENDING_REVIEW",
+      "ORIGINAL_FILES_UNCHANGED"
+    ],
+    "scope": "STATIC_DATA_FORMAT_ONLY_NOT_CONTENT_APPROVAL_OR_MODEL_QUALITY"
+  },
+  "review_document": "docs/m5-release/diagnosis-supplement-review-v1.md"
+}

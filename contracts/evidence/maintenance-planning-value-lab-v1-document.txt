@@ -1,0 +1,122 @@
+# AGT-007 跨职能维修方案会审
+
+## 1. 目标与启用边界
+
+本切片把“多 Agent”落实为一个与真实维修业务相连、但不越过企业写操作边界的能力：针对一条已完成且不可变绑定的 `DiagnosisRun`，安全、备件、派工三个专员分别生成独立意见，协调 Agent 只基于三份意见形成待人工复核方案。
+
+该能力默认关闭，并采用双层启用。`IOAP_MULTI_AGENT_PLANNING_ENABLED=true` 只是平台级能力总开关；每个租户仍必须把一个已完成 Gold 净收益评测提交为 `PENDING_APPROVAL`，由不同主体的租户管理员批准成目标环境唯一 `ACTIVE` 记录后，API 才能解析运行时绑定并接受新会审任务。项目 Gold 只能申请 `PROJECT_STAGING`；`PRODUCTION` 必须绑定至少 30 例 `ENTERPRISE_GOLD` 形成的 `PRODUCTION_CANDIDATE_ELIGIBLE`。同时必须启用 Model Gateway。`IOAP_MAINTENANCE_PLANNING_MODEL_ALIAS` 默认复用 `industrial-diagnosis`，超时由 `IOAP_MAINTENANCE_PLANNING_TIMEOUT_SECONDS` 控制。Ollama 开发 Transport 不支持该请求类型，启用组合会在配置校验阶段失败。
+
+无论任务处于何种状态，本能力都不会创建或修改：
+
+- ActionProposal、Approval 或 ExecutionAttempt；
+- WorkOrder、FSM 派工、采购或 WMS 库存事实；
+- 客户通知、退款、报价或设备控制；
+- DiagnosisRun、知识图谱、训练数据或模型发布。
+
+人工 `ACCEPT` 仅表示“建议已由独立专家复核”，不是执行授权。后续若要产生工单、备件或派工，必须由既有关闭式业务流程重新读取权威系统事实、生成独立提案并完成对应审批。
+
+## 2. Agent 责任分离
+
+| Agent | 可读取的输入 | 允许输出 | 禁止事项 |
+|---|---|---|---|
+| SAFETY | 固定诊断报告、事件标识 | 风险、隔离要求、安全停点、缺失事实 | 设备控制、宣称安全措施已执行 |
+| PARTS | 固定诊断报告、事件标识 | 非权威备件候选、数量假设、缺失事实 | 查询或改写库存、预留、采购 |
+| DISPATCH | 固定诊断报告、事件标识 | 技能、时窗、人员和现场约束 | 查询或创建真实排班、派工 |
+| COORDINATOR | 三份已验证专员输出、诊断摘要哈希 | 关闭式综合建议、冲突和就绪状态 | 读取原始诊断正文、引入新事实、执行动作 |
+
+三个专员通过独立 Model Gateway 请求并行运行；协调 Agent 是第四次请求。四次请求必须固定到会审创建时的相同模型 Alias、Release、Manifest、Prompt Bundle 和关闭式响应 Schema。每次推理具有独立 `inference_request_id`、输入摘要、输出摘要和 Context Hash。
+
+## 3. 数据与状态机
+
+迁移 `0075_multi_agent_maintenance_planning` 增加：
+
+- `maintenance_planning_councils`：任务状态、来源绑定、模型/Prompt 绑定、协调结果、复核事实与乐观锁版本；
+- `maintenance_planning_contributions`：按任务、尝试次数和角色追加保存四份贡献，不覆盖失败尝试留下的既有贡献。
+
+两张表都启用并强制 PostgreSQL RLS。一个租户的一次 DiagnosisRun 最多建立一个会审；请求主体与幂等键唯一。状态机如下：
+
+```text
+QUEUED -> RUNNING -> REVIEW_PENDING -> ACCEPTED
+                  |                -> REJECTED
+                  -> FAILED -> QUEUED (仅可重试故障)
+```
+
+`FAILED` 只有 Temporal 派发失败、可重试模型配额/可用性错误和瞬时依赖错误允许人工重试。来源漂移、Prompt 漂移、模型绑定漂移、关闭式输出错误和协调来源不完整均失败关闭，不能通过重试绕过治理冲突。
+
+迁移 `0080_maintenance_planning_value_evaluation` 继续增加冻结 Gold 套件、A/B 评测运行和追加式盲评三张租户表。评测运行保存匿名分配、Diagnosis/Council/Contribution/ModelInference 摘要、策略、指标、门禁和最终报告哈希；盲评按评测、案例和专家唯一，已经提交的评分不能覆盖。
+
+## 4. 来源与结果绑定
+
+创建任务时服务端必须确认：
+
+1. Incident、DiagnosisRun 和 Asset 属于同一租户；
+2. DiagnosisRun 属于该 Incident，状态为 `COMPLETED` 且报告为结构化对象；
+3. 请求者具备当前 Asset 范围和 `maintenance_council.request`；
+4. 部署镜像中存在 `industrial-maintenance-planning-council-v1`；
+5. 同租户 PromptBundleRecord 状态为 `APPROVED`，内容哈希、Schema 和模型兼容列表与部署定义完全一致；
+6. Model Alias 当前解析到精确 Production Release 和 Manifest。
+
+任务冻结 Diagnosis 版本、报告摘要和 Manifest 摘要。Activity 开始、落库和人工复核三个边界都会重新加载来源；任一版本或摘要变化即拒绝继续。协调结果也以摘要绑定，复核时重新校验关闭式结构与完整三角色来源。
+
+## 5. API 与正式界面
+
+API：
+
+- `GET /api/v1/maintenance-planning-councils`：按当前设备范围列出，可按 `incident_id` 过滤；
+- `POST /api/v1/maintenance-planning-councils`：提交 Incident、DiagnosisRun 和 `Idempotency-Key`；
+- `GET /api/v1/maintenance-planning-councils/{council_id}`：读取绑定、贡献、结果和合法动作；
+- `POST /api/v1/maintenance-planning-councils/{council_id}/retry`：以 `If-Match` 重试可重试失败；
+- `POST /api/v1/maintenance-planning-councils/{council_id}/review`：不同主体以 `If-Match` 接受或驳回。
+- `GET/POST /api/v1/maintenance-planning-evaluation-suites`：读取或冻结独立 Gold 案例与评分参考项；
+- `GET/POST /api/v1/maintenance-planning-evaluations`：绑定同批 DiagnosisRun/Council，创建匿名随机 A/B；
+- `GET /api/v1/maintenance-planning-evaluations/{evaluation_id}`：读取盲评进度、揭盲后的指标和门禁；
+- `POST /api/v1/maintenance-planning-evaluations/{evaluation_id}/cases/{case_id}/judgments`：提交独立专家评分。
+
+正式入口为 `/maintenance-planning`。页面支持任务过滤、发起、运行态轮询、四份意见与哈希查看、失败重试和独立复核，并新增 Gold 套件冻结、评测创建、匿名双栏评分、冲突仲裁、揭盲指标与门禁工作区。浏览器不自行推断权限，只根据服务端 `legal_actions` 渲染动作，并固定展示“仅建议、零业务副作用、评测不自动激活功能”。
+
+## 6. 权限
+
+| 角色 | 读取 | 发起/重试 | 独立复核 |
+|---|---:|---:|---:|
+| Field Engineer | 是 | 否 | 否 |
+| After-sales Engineer | 是 | 是 | 否 |
+| Domain Expert | 是 | 是 | 是 |
+| Tenant Admin | 是 | 否 | 否 |
+
+发起和复核同时进入 OPA 强制动作集合。复核人不能与发起人相同，且必须仍拥有 Asset 范围。
+
+## 7. 运行、验收与回滚
+
+API 只持久化 `QUEUED` 后向 Temporal 派发。派发失败会把任务改为明确的 `FAILED/DISPATCH_FAILED`；API 内不会直接执行四次推理。Workflow Worker 在功能开关开启且 Model Gateway 可用时注册 `maintenance_planning_council_workflow` 和 `maintenance_planning_council_activity`。
+
+验收重点：
+
+- 四个请求具有四个角色和独立推理标识，但使用完全相同的生产绑定；
+- 协调请求只包含三份专员输出和诊断摘要，不含原诊断正文；
+- 报告、Manifest、Prompt、模型或响应漂移均不产生待复核方案；
+- 发起人不能自审，旧 `If-Match` 不能覆盖状态；
+- 接受与驳回前后，工单、提案、采购和派工数据数量不变；
+- OpenAPI、前端生成客户端、迁移线性链和 RLS 合同保持一致。
+- 单 Agent 基线只统计 Diagnosis 的成功推理，明确排除 `MAINTENANCE_PLANNING` 请求；四 Agent 时延按三个并行专员的最大值加协调阶段计算，Token 按四次请求求和；
+- A/B 身份在运行结束前不返回，至少两位不同专家评分，前两位偏好不一致时必须由第三位专家仲裁；
+- 质量提升至少 0.25 且配对 Bootstrap 95% 置信区间下界大于 0，同时事实错误、安全遗漏、备件误报、派工可执行性和专家时间不得回归；候选时延和 Token 倍率分别不得超过 4.5 和 5.0；
+- 项目 Staging Gold 至少 3 例可形成 `PROJECT_CANDIDATE_ELIGIBLE`，但只有企业 Gold 至少 30 例才可能形成 `PRODUCTION_CANDIDATE_ELIGIBLE`；两种结论都不自动修改运行配置。
+- 启用申请固定 Evaluation 报告、评测策略和 Gold Manifest 摘要；发起人与审批人必须不同，每个租户和目标环境最多一个 `ACTIVE`，新会审进一步固定 Activation ID 与策略摘要；来源漂移、未批准或已回滚记录不能解析运行时绑定。
+- 回滚只要求有效租户管理员权限和乐观锁，不因评测来源已经漂移而被阻断；已排队会审在执行前复查 Activation，失效时停止模型调用。
+
+常规租户回滚使用 `POST /api/v1/maintenance-planning-activations/{activation_id}/rollback`，无需重启服务；平台级紧急熔断再关闭 `IOAP_MULTI_AGENT_PLANNING_ENABLED`。两种方式都保留历史表和 API 只读能力。应用版本回滚不应删除 `0075`、`0080` 和 `0081` 数据。若必须执行数据库 downgrade，应先确认没有需要保留的会审、评测、审批和贡献记录，并按数据库恢复流程备份后操作。
+
+## 8. 当前价值证据与生产边界
+
+仓库现已实现受治理的软件闭环和可重复的项目 Staging 价值评测：冻结的 DiagnosisRun 作为单 Agent 当前基线，完成的 Council 作为四 Agent 候选；服务端随机匿名 A/B，双人盲评并在分歧时要求第三人仲裁；最终报告同时包含质量、配对 Bootstrap 置信区间、事实错误、安全遗漏、备件误报、派工可执行性、时延、Token 和专家复核时间。低资源验收入口为：
+
+```bash
+.venv/bin/industrial-ops-maintenance-planning-value-lab run
+.venv/bin/industrial-ops-maintenance-planning-value-lab verify
+```
+
+回执写入 `artifacts/m7-maintenance-planning-value-lab/acceptance.json`，并绑定后端、迁移、API、OpenAPI、正式页面和定向集成测试的 SHA-256。当前项目生成的 3 例 Staging Gold 已验证完整流程并形成 `PROJECT_CANDIDATE_ELIGIBLE`，可在本项目企业 Staging 中作为候选使用；它没有把 `IOAP_MULTI_AGENT_PLANNING_ENABLED` 自动改为 `true`，也不宣称外部企业生产数据或生产流量已经完成验收。
+
+正式启用工作台与 API 已实现：`GET/POST /api/v1/maintenance-planning-activations` 管理申请，`POST /{activation_id}/decision` 执行独立批准或拒绝，`POST /{activation_id}/rollback` 执行立即回滚。批准不会修改环境变量，而是与平台总开关共同构成运行时门禁；因此项目可以实际使用已批准的 Staging 候选，同时平台运维仍保留全局熔断权。
+
+真实外部生产仍需目标企业提供至少 30 例独立企业 Gold、具名领域专家资质与双人/仲裁记录，并在真实生产模型路由和流量下重跑同一门禁。未达到 `PRODUCTION_CANDIDATE_ELIGIBLE` 时保持默认关闭。

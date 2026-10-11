@@ -1,0 +1,61 @@
+services:
+  vault-bootstrap:
+    environment:
+      IOAP_REALTIME_TURN_SHARED_SECRET: ${IOAP_REALTIME_TURN_SHARED_SECRET:-local-realtime-turn-secret-change-before-shared-use}
+
+  api:
+    environment:
+      IOAP_REALTIME_MEDIA_ENABLED: "true"
+      IOAP_REALTIME_SIGNALING_URL: ws://localhost:${M3_MEDIA_PORT:-7880}/realtime
+      IOAP_REALTIME_STUN_URLS: '["stun:localhost:${M3_TURN_PORT:-3478}"]'
+      IOAP_REALTIME_TURN_URL: turn:localhost:${M3_TURN_PORT:-3478}?transport=udp
+      IOAP_REALTIME_ASR_MODEL_ALIAS: industrial-diagnosis
+    depends_on:
+      media:
+        condition: service_healthy
+
+  media:
+    image: industrial-ops/m3-media-server:local
+    build:
+      context: .
+      dockerfile: docker/media-server.Dockerfile
+    environment:
+      IOAP_MEDIA_CORE_API_URL: http://api:8000/api/v1
+      IOAP_MEDIA_API_TIMEOUT_SECONDS: "25"
+      IOAP_MEDIA_VAD_ENERGY_THRESHOLD: ${IOAP_MEDIA_VAD_ENERGY_THRESHOLD:-450}
+      IOAP_MEDIA_ALLOWED_ORIGINS: '["http://localhost:${M1_WEB_PORT:-3000}"]'
+    ports:
+      - "127.0.0.1:${M3_MEDIA_PORT:-7880}:7880"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7880/health/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  coturn:
+    image: coturn/coturn:4.6.3-alpine
+    command:
+      - --no-cli
+      - --log-file=stdout
+      - --listening-port=3478
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${IOAP_REALTIME_TURN_SHARED_SECRET:-local-realtime-turn-secret-change-before-shared-use}
+      - --realm=industrial-ops.local
+      - --external-ip=${IOAP_REALTIME_TURN_EXTERNAL_IP:-127.0.0.1}
+      - --min-port=49160
+      - --max-port=49200
+    ports:
+      - "127.0.0.1:${M3_TURN_PORT:-3478}:3478/tcp"
+      - "127.0.0.1:${M3_TURN_PORT:-3478}:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/var/tmp]
+    security_opt: [no-new-privileges:true]

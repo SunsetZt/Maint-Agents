@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://industrial-ops.local/contracts/events/work_order.closed.v1.schema.json",
+  "title": "work_order.closed v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "tenant_id",
+    "aggregate_type",
+    "aggregate_id",
+    "aggregate_version",
+    "sequence",
+    "occurred_at",
+    "published_at",
+    "producer",
+    "trace_id",
+    "correlation_id",
+    "causation_id",
+    "data_classification",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^event-[0-9a-f]{32}$"
+    },
+    "event_type": {
+      "const": "work_order.closed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "aggregate_type": {
+      "const": "work_order"
+    },
+    "aggregate_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "aggregate_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "published_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "causation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "data_classification": {
+      "const": "CONFIDENTIAL"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "work_order_id",
+        "incident_id",
+        "completion_id",
+        "verification_id",
+        "source_content_hash"
+      ],
+      "properties": {
+        "work_order_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "incident_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "completion_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "verification_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source_content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

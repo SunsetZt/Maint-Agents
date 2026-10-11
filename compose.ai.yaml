@@ -1,0 +1,19 @@
+services:
+  vault-bootstrap:
+    environment:
+      IOAP_MODEL_GATEWAY_API_KEY: ${IOAP_MODEL_GATEWAY_API_KEY:?AI profile requires IOAP_MODEL_GATEWAY_API_KEY}
+
+  api:
+    environment:
+      IOAP_MODEL_GATEWAY_ENABLED: "true"
+
+  workflow-worker:
+    build:
+      context: .
+      dockerfile: docker/ai-worker.Dockerfile
+    image: industrial-ops/ai-workflow-worker:local
+    environment:
+      IOAP_MODEL_GATEWAY_ENABLED: "true"
+      IOAP_OCR_PROVIDER: paddle
+      IOAP_PADDLE_OCR_LANGUAGE: ${IOAP_PADDLE_OCR_LANGUAGE:-ch}
+      IOAP_PADDLE_OCR_COMPONENT_ID: ${IOAP_PADDLE_OCR_COMPONENT_ID:-PaddleOCR@3.0}

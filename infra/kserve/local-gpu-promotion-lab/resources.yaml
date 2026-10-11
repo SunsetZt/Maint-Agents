@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ioap-gpu-promotion-lab
+  labels:
+    ioap.openai.com/environment: local-staging
+    ioap.openai.com/data-classification: synthetic-data
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gpu-lab-gguf-models
+  labels:
+    ioap.openai.com/owner: gpu-model-promotion-lab
+spec:
+  capacity:
+    storage: 4Gi
+  accessModes: [ReadOnlyMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /var/local/ioap-gpu-promotion-lab/gguf
+    type: Directory
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [ioap-gpu-promotion-lab-control-plane]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gpu-lab-gguf-models
+  namespace: ioap-gpu-promotion-lab
+spec:
+  accessModes: [ReadOnlyMany]
+  storageClassName: ""
+  volumeName: gpu-lab-gguf-models
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: model-storage-reader
+  namespace: ioap-gpu-promotion-lab
+automountServiceAccountToken: false
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: ioap-gpu-lab-envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: ioap-gpu-lab-proxy
+  namespace: ioap-gpu-promotion-lab
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: ClusterIP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: ioap-gpu-lab-gateway
+  namespace: ioap-gpu-promotion-lab
+spec:
+  gatewayClassName: ioap-gpu-lab-envoy
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: ioap-gpu-lab-proxy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: gpu-lab.local
+      allowedRoutes:
+        namespaces:
+          from: Same

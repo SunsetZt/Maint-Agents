@@ -1,0 +1,6 @@
+apiVersion: v2
+name: industrial-ops-runtime-secrets
+description: Namespaced Vault credential delivery for the industrial operations application
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

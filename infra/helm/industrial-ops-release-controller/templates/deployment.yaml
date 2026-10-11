@@ -1,0 +1,111 @@
+{{- $digest := required "image.digest must be a sha256 digest from the signed build" .Values.image.digest -}}
+{{- $replicas := int .Values.replicaCount -}}
+{{- $retry := int .Values.leaderElection.retryPeriodSeconds -}}
+{{- $renew := int .Values.leaderElection.renewDeadlineSeconds -}}
+{{- $duration := int .Values.leaderElection.leaseDurationSeconds -}}
+{{- if lt $replicas 1 -}}
+{{- fail "replicaCount must be at least one" -}}
+{{- end -}}
+{{- if and (gt $replicas 1) (not .Values.leaderElection.enabled) -}}
+{{- fail "multiple replicas require leader election" -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" .Values.leaderElection.leaseName) -}}
+{{- fail "leaderElection.leaseName must be a DNS-label-safe value" -}}
+{{- end -}}
+{{- if or (le $retry 0) (ge $retry $renew) (ge $renew $duration) -}}
+{{- fail "leader election timing must satisfy 0 < retryPeriodSeconds < renewDeadlineSeconds < leaseDurationSeconds" -}}
+{{- end -}}
+{{- if and .Values.podDisruptionBudget.enabled (lt (int .Values.podDisruptionBudget.minAvailable) 1) -}}
+{{- fail "podDisruptionBudget.minAvailable must be at least one" -}}
+{{- end -}}
+{{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.podDisruptionBudget.minAvailable) $replicas) -}}
+{{- fail "podDisruptionBudget.minAvailable cannot exceed replicaCount" -}}
+{{- end -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" $digest) -}}
+{{- fail "image.digest must match sha256:<64 lowercase hex characters>" -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "industrial-ops-release-controller.name" . }}
+  namespace: {{ .Values.releaseNamespace }}
+  labels:
+    {{- include "industrial-ops-release-controller.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "industrial-ops-release-controller.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "industrial-ops-release-controller.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: "{{ .Values.image.repository }}@{{ $digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["industrial-ops-deployment-controller"]
+          env:
+            - name: IOAP_SECRET_BACKEND
+              value: environment
+            - name: IOAP_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runtimeSecret.name }}
+                  key: {{ .Values.runtimeSecret.databaseUrlKey }}
+            - name: IOAP_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.runtimeSecret.name }}
+                  key: {{ .Values.runtimeSecret.auditHashKey }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_TENANT_ID
+              value: {{ .Values.controller.tenantId | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_SUBJECT_ID
+              value: {{ .Values.controller.subjectId | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_INTERVAL_SECONDS
+              value: {{ .Values.controller.intervalSeconds | quote }}
+            - name: IOAP_DEPLOYMENT_OBSERVATION_INTERVAL_SECONDS
+              value: {{ .Values.controller.observationIntervalSeconds | quote }}
+            - name: IOAP_OPA_DECISION_URL
+              value: {{ .Values.controller.opaDecisionUrl | quote }}
+            - name: IOAP_PROMETHEUS_URL
+              value: {{ .Values.controller.prometheusUrl | quote }}
+            - name: IOAP_KUBERNETES_API_URL
+              value: {{ .Values.controller.kubernetesApiUrl | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_LEADER_ELECTION_ENABLED
+              value: {{ .Values.leaderElection.enabled | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_LEASE_NAMESPACE
+              value: {{ .Values.releaseNamespace | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_LEASE_NAME
+              value: {{ .Values.leaderElection.leaseName | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_POD_UID
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.uid
+            - name: IOAP_DEPLOYMENT_CONTROLLER_LEASE_DURATION_SECONDS
+              value: {{ .Values.leaderElection.leaseDurationSeconds | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_RENEW_DEADLINE_SECONDS
+              value: {{ .Values.leaderElection.renewDeadlineSeconds | quote }}
+            - name: IOAP_DEPLOYMENT_CONTROLLER_RETRY_PERIOD_SECONDS
+              value: {{ .Values.leaderElection.retryPeriodSeconds | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true

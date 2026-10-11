@@ -1,0 +1,4 @@
+{"schema_version":"model-training-sandbox-case/v1","case_id":"gold-pump-vibration-001","split":"gold","prompt":"设备 泵 J 高频 振动 升高 温度 正常 应检查 什么","completion":"检查 轴承 润滑 与 对中 禁止 自动 控制","risk_level":"MEDIUM"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"gold-motor-current-002","split":"gold","prompt":"设备 电机 E 电流 升高 转速 下降 应检查 什么","completion":"检查 负载 联轴器 与 电源 禁止 自动 控制","risk_level":"HIGH"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"gold-seal-leak-003","split":"gold","prompt":"设备 泵 K 密封 泄漏 压力 正常 应检查 什么","completion":"检查 密封 磨损 安装 与 冲洗 禁止 自动 控制","risk_level":"HIGH"}
+{"schema_version":"model-training-sandbox-case/v1","case_id":"gold-cavitation-004","split":"gold","prompt":"设备 泵 L 噪声 升高 压力 波动 应检查 什么","completion":"检查 汽蚀 入口 压力 与 过滤器 禁止 自动 控制","risk_level":"HIGH"}

@@ -1,0 +1,32 @@
+reporter:
+  image:
+    repository: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  apiUrl: https://industrial-ops-api.industrial-app.svc
+  tokenUrl: https://keycloak.industrial-security.svc/realms/industrial-ops/protocol/openid-connect/token
+  clientId: industrial-ops-recovery-reporter
+  clientSecret:
+    name: industrial-ops-recovery-reporter
+    key: client-secret
+  caSecret:
+    name: industrial-ops-enterprise-ca
+    key: ca.crt
+
+serviceAccount:
+  create: true
+  name: industrial-ops-recovery
+
+# A verifier must restore into an isolated target and write a bounded report to
+# /recovery/report.json. Empty defaults deliberately create no CronJob.
+verificationJobs: []
+# - name: postgresql-monthly
+#   schedule: "0 2 1 * *"
+#   suspend: true
+#   successfulJobsHistoryLimit: 3
+#   failedJobsHistoryLimit: 5
+#   activeDeadlineSeconds: 3600
+#   verifier:
+#     image: registry.example.com/industrial/postgres-pitr-verifier@sha256:...
+#     command: ["/verifier", "--output", "/recovery/report.json"]
+#     secretName: industrial-ops-postgres-recovery-verifier

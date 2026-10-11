@@ -1,0 +1,335 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: industrial-ops-production-slos
+  labels:
+    app.kubernetes.io/name: industrial-ops-observability
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  groups:
+    - name: industrial-ops.api-slo
+      rules:
+        - alert: IndustrialOpsApiFastErrorBudgetBurn
+          expr: |
+            (
+              sum(rate(ioap_http_requests_total{status=~"5.."}[5m]))
+              / sum(rate(ioap_http_requests_total[5m]))
+            ) > (14.4 * 0.001)
+            and
+            (
+              sum(rate(ioap_http_requests_total{status=~"5.."}[1h]))
+              / sum(rate(ioap_http_requests_total[1h]))
+            ) > (14.4 * 0.001)
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform-sre
+            runbook_id: api-slo-burn
+          annotations:
+            summary: API availability error budget is burning at the fast-window threshold.
+        - alert: IndustrialOpsApiSlowErrorBudgetBurn
+          expr: |
+            (
+              sum(rate(ioap_http_requests_total{status=~"5.."}[30m]))
+              / sum(rate(ioap_http_requests_total[30m]))
+            ) > (6 * 0.001)
+            and
+            (
+              sum(rate(ioap_http_requests_total{status=~"5.."}[6h]))
+              / sum(rate(ioap_http_requests_total[6h]))
+            ) > (6 * 0.001)
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform-sre
+            runbook_id: api-slo-burn
+          annotations:
+            summary: API availability error budget is burning at the slow-window threshold.
+        - alert: IndustrialOpsApiLatencyP95High
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (rate(ioap_http_request_duration_seconds_bucket[5m]))
+            ) > 0.3
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform-sre
+            runbook_id: api-slo-burn
+          annotations:
+            summary: API P95 latency has exceeded 300 milliseconds for 10 minutes.
+    - name: industrial-ops.ai-runtime
+      rules:
+        - alert: IndustrialOpsInferenceFailureRateHigh
+          expr: |
+            sum(rate(ioap_inference_requests_total{status!="success"}[5m]))
+            / sum(rate(ioap_inference_requests_total[5m])) > 0.01
+          for: 10m
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: inference-degradation
+          annotations:
+            summary: Model inference failure rate has exceeded one percent.
+        - alert: IndustrialOpsInferenceOom
+          expr: sum(increase(ioap_inference_requests_total{status="oom"}[5m])) > 0
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: gpu-health
+          annotations:
+            summary: A model inference worker reported an out-of-memory failure.
+        - alert: IndustrialOpsGpuXidError
+          expr: increase(DCGM_FI_DEV_XID_ERRORS[5m]) > 0
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: gpu-health
+          annotations:
+            summary: A GPU reported a new XID error.
+        - alert: IndustrialOpsGpuTemperatureHigh
+          expr: DCGM_FI_DEV_GPU_TEMP > 85
+          for: 10m
+          labels:
+            severity: warning
+            owner: ml-platform
+            runbook_id: gpu-health
+          annotations:
+            summary: A GPU has remained above 85 degrees Celsius.
+        - alert: IndustrialOpsTimeseriesRuntimeFailureRateHigh
+          expr: |
+            sum by (release_id) (
+              rate(ioap_timeseries_runtime_requests_total{status!="success"}[5m])
+            )
+            / clamp_min(
+              sum by (release_id) (rate(ioap_timeseries_runtime_requests_total[5m])),
+              0.000001
+            ) > 0.02
+          for: 5m
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: timeseries-inference-degradation
+          annotations:
+            summary: Telemetry Transformer runtime failure rate exceeded two percent.
+        - alert: IndustrialOpsRerankerRuntimeFailureRateHigh
+          expr: |
+            sum by (release_id) (
+              rate(ioap_reranker_runtime_requests_total{status!="success"}[5m])
+            )
+            / clamp_min(
+              sum by (release_id) (rate(ioap_reranker_runtime_requests_total[5m])),
+              0.000001
+            ) > 0.02
+          for: 5m
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: reranker-inference-degradation
+          annotations:
+            summary: Knowledge Reranker runtime failure rate exceeded two percent.
+        - alert: IndustrialOpsEmbeddingRuntimeFailureRateHigh
+          expr: |
+            sum by (release_id) (
+              rate(ioap_embedding_runtime_requests_total{status!="success"}[5m])
+            )
+            / clamp_min(
+              sum by (release_id) (rate(ioap_embedding_runtime_requests_total[5m])),
+              0.000001
+            ) > 0.02
+          for: 5m
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: embedding-inference-degradation
+          annotations:
+            summary: Knowledge Embedding runtime failure rate exceeded two percent.
+        - alert: IndustrialOpsEmbeddingRuntimeLatencyHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (release_id, le) (
+                rate(ioap_embedding_runtime_latency_seconds_bucket[5m])
+              )
+            ) > 1
+          for: 10m
+          labels:
+            severity: warning
+            owner: ml-platform
+            runbook_id: embedding-inference-degradation
+          annotations:
+            summary: Knowledge Embedding P95 latency exceeded one second.
+        - alert: IndustrialOpsKnowledgeEmbeddingFailureHigh
+          expr: |
+            sum by (release_id) (rate(ioap_knowledge_embedding_failures_total[15m]))
+            / clamp_min(
+              sum by (release_id) (rate(ioap_knowledge_embedding_requests_total[15m])),
+              0.000001
+            ) > 0.05
+          for: 15m
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: embedding-inference-degradation
+          annotations:
+            summary: Production index or query vectorization is failing frequently.
+        - alert: IndustrialOpsRerankerRuntimeLatencyHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (release_id, le) (
+                rate(ioap_reranker_runtime_latency_seconds_bucket[5m])
+              )
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            owner: ml-platform
+            runbook_id: reranker-inference-degradation
+          annotations:
+            summary: Knowledge Reranker P95 latency exceeded 500 milliseconds.
+        - alert: IndustrialOpsKnowledgeRerankerFallbackHigh
+          expr: |
+            sum by (release_id) (rate(ioap_knowledge_reranker_fallbacks_total[15m]))
+            / clamp_min(
+              sum by (release_id) (rate(ioap_knowledge_reranker_requests_total[15m])),
+              0.000001
+            ) > 0.05
+          for: 15m
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: reranker-inference-degradation
+          annotations:
+            summary: Production knowledge queries are frequently falling back from Reranker to RRF.
+        - alert: IndustrialOpsTimeseriesRuntimeLatencyHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (release_id, le) (
+                rate(ioap_timeseries_runtime_latency_seconds_bucket[5m])
+              )
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            owner: ml-platform
+            runbook_id: timeseries-inference-degradation
+          annotations:
+            summary: Telemetry Transformer P95 latency exceeded 500 milliseconds.
+        - alert: IndustrialOpsTimeseriesRuleFallbackHigh
+          expr: |
+            sum by (release_id) (rate(ioap_timeseries_rule_fallbacks_total[15m]))
+            / clamp_min(
+              sum by (release_id) (rate(ioap_timeseries_detection_requests_total[15m])),
+              0.000001
+            ) > 0.05
+          for: 15m
+          labels:
+            severity: critical
+            owner: ml-platform
+            runbook_id: timeseries-inference-degradation
+          annotations:
+            summary: Production telemetry detection rule fallback rate exceeded five percent.
+        - alert: IndustrialOpsPredictiveOutcomeQualityRegressed
+          expr: |
+            (
+              sum by (release_id) (
+                increase(ioap_predictive_outcomes_total{outcome="FALSE_POSITIVE"}[24h])
+              )
+              / clamp_min(
+                sum by (release_id) (
+                  increase(ioap_predictive_outcomes_total{outcome=~"TRUE_POSITIVE|FALSE_POSITIVE"}[24h])
+                ),
+                1
+              ) > 0.20
+            )
+            or
+            (
+              sum by (release_id) (
+                increase(ioap_predictive_outcomes_total{outcome="MISSED_FAILURE"}[24h])
+              )
+              / clamp_min(
+                sum by (release_id) (
+                  increase(ioap_predictive_outcomes_total{outcome=~"TRUE_POSITIVE|MISSED_FAILURE"}[24h])
+                ),
+                1
+              ) > 0.20
+            )
+          for: 30m
+          labels:
+            severity: critical
+            owner: maintenance-ml
+            runbook_id: predictive-quality-regression
+          annotations:
+            summary: Human-governed predictive maintenance outcome quality regressed.
+    - name: industrial-ops.workflows-and-data
+      rules:
+        - alert: IndustrialOpsKafkaConsumerLagHigh
+          expr: max(kafka_consumergroup_lag) > 10000
+          for: 10m
+          labels:
+            severity: warning
+            owner: data-platform
+            runbook_id: event-pipeline-lag
+          annotations:
+            summary: Kafka consumer lag has exceeded the reviewed backlog threshold.
+        - alert: IndustrialOpsCdcFreshnessHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (rate(ioap_cdc_event_freshness_seconds_bucket[5m]))
+            ) > 10
+          for: 10m
+          labels:
+            severity: warning
+            owner: data-platform
+            runbook_id: event-pipeline-lag
+          annotations:
+            summary: CDC P95 freshness has exceeded ten seconds.
+        - alert: IndustrialOpsTemporalTaskQueueStuck
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum by (le, task_queue) (
+                rate(temporal_workflow_task_schedule_to_start_latency_seconds_bucket[10m])
+              )
+            ) > 60
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform-sre
+            runbook_id: temporal-workflow-stuck
+          annotations:
+            summary: A Temporal workflow task queue has been delayed for over one minute.
+    - name: industrial-ops.security-and-cost
+      rules:
+        - alert: IndustrialOpsUnauthorizedHighRiskExecution
+          expr: increase(ioap_security_findings_total{finding="unauthorized_high_risk_execution"}[5m]) > 0
+          labels:
+            severity: critical
+            owner: security
+            runbook_id: security-hard-gate
+            security_hard_gate: "true"
+          annotations:
+            summary: An unauthorized high-risk execution finding was recorded.
+        - alert: IndustrialOpsPlaintextSensitiveLog
+          expr: increase(ioap_security_findings_total{finding="plaintext_sensitive_log"}[5m]) > 0
+          labels:
+            severity: critical
+            owner: security
+            runbook_id: security-hard-gate
+            security_hard_gate: "true"
+          annotations:
+            summary: A plaintext sensitive-log finding was recorded.
+        - alert: IndustrialOpsHourlyModelCostHigh
+          expr: sum(ioap_model_cost_usd_per_hour) > 100
+          for: 30m
+          labels:
+            severity: warning
+            owner: finops
+            runbook_id: cost-anomaly
+          annotations:
+            summary: Aggregate model runtime cost exceeded the reviewed hourly threshold.
+{{- end }}

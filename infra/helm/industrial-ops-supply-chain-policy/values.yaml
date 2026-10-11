@@ -1,0 +1,4 @@
+imageRepositoryGlob: ""
+certificateIdentityRegexp: ""
+certificateOidcIssuer: https://token.actions.githubusercontent.com
+mode: enforce

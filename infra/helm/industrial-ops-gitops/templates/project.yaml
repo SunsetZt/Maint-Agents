@@ -1,0 +1,118 @@
+{{- include "industrial-ops-gitops.validate" . -}}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ .Values.projectName }}
+  namespace: {{ .Values.argocdNamespace }}
+  labels:
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+    industrial-ops.ai/environment: {{ .Values.environment | quote }}
+spec:
+  description: Reviewed AI platform operators and release-control applications
+  sourceRepos:
+    - {{ .Values.repository.url | quote }}
+    {{- if .Values.certManager.enabled }}
+    - {{ .Values.certManager.repositoryUrl | quote }}
+    {{- end }}
+    {{- if .Values.envoyGateway.enabled }}
+    - {{ .Values.envoyGateway.repositoryUrl | quote }}
+    {{- end }}
+    {{- if eq (toString .Values.inferenceGateway.enabled) "true" }}
+    - {{ .Values.inferenceGateway.crd.repositoryUrl | quote }}
+    - {{ .Values.inferenceGateway.aiGateway.repositoryUrl | quote }}
+    {{- end }}
+    {{- if .Values.supplyChainPolicy.enabled }}
+    - {{ .Values.supplyChainPolicy.repositoryUrl | quote }}
+    {{- end }}
+    {{- if .Values.observability.enabled }}
+    - {{ .Values.observability.repositoryUrl | quote }}
+    {{- end }}
+    {{- if eq (toString .Values.keda.enabled) "true" }}
+    - {{ .Values.keda.repositoryUrl | quote }}
+    {{- end }}
+    {{- if eq (toString .Values.externalSecrets.enabled) "true" }}
+    - {{ .Values.externalSecrets.repositoryUrl | quote }}
+    {{- end }}
+    {{- if .Values.gpuOperator.enabled }}
+    - {{ .Values.gpuOperator.repositoryUrl | quote }}
+    {{- end }}
+    {{- if .Values.kserve.enabled }}
+    - {{ .Values.kserve.repositoryUrl | quote }}
+    {{- end }}
+  destinations:
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.platform.namespace }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.application.namespace }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.certManager.namespace }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.envoyGateway.namespace }}
+    {{- if eq (toString .Values.inferenceGateway.enabled) "true" }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.inferenceGateway.aiGateway.namespace }}
+    {{- end }}
+    {{- if .Values.supplyChainPolicy.enabled }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.supplyChainPolicy.namespace }}
+    {{- end }}
+    {{- if .Values.observability.enabled }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.observability.namespace }}
+    {{- end }}
+    {{- if eq (toString .Values.keda.enabled) "true" }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.keda.namespace }}
+    {{- end }}
+    {{- if eq (toString .Values.externalSecrets.enabled) "true" }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.externalSecrets.namespace }}
+    {{- end }}
+    {{- if .Values.recovery.enabled }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.recovery.namespace }}
+    {{- end }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.gpuOperator.namespace }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.kserve.namespace }}
+    - server: {{ .Values.destinationServer | quote }}
+      namespace: {{ .Values.releaseController.namespace }}
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: apiregistration.k8s.io
+      kind: APIService
+    - group: scheduling.k8s.io
+      kind: PriorityClass
+    - group: node.k8s.io
+      kind: RuntimeClass
+    - group: storage.k8s.io
+      kind: CSIDriver
+    - group: gateway.networking.k8s.io
+      kind: GatewayClass
+    - group: gateway.envoyproxy.io
+      kind: "*"
+    - group: cert-manager.io
+      kind: "*"
+    - group: policy.sigstore.dev
+      kind: "*"
+    - group: serving.kserve.io
+      kind: ClusterServingRuntime
+    - group: nvidia.com
+      kind: "*"
+    - group: nfd.k8s-sigs.io
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

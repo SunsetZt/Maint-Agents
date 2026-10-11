@@ -1,0 +1,5 @@
+{
+  "title": "Industrial Root Cause Review",
+  "description": "Governed redacted industrial maintenance feedback review",
+  "label_config": "<View><Text name=\"content\" value=\"$content\"/><Choices name=\"root_cause\" toName=\"content\" choice=\"single\" required=\"true\"><Choice value=\"restricted_inlet_filter\"/><Choice value=\"bearing_wear\"/><Choice value=\"electrical_fault\"/><Choice value=\"other\"/></Choices></View>"
+}

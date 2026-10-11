@@ -1,0 +1,812 @@
+{{- $root := . -}}
+{{- if not (eq (toString .Values.application.enabled) "true") -}}
+{{- fail "application.enabled must remain true for the formal GitOps delivery" -}}
+{{- end -}}
+{{- if empty .Values.application.namespace -}}
+{{- fail "application.namespace is required" -}}
+{{- end -}}
+{{- if empty .Values.application.chartPath -}}
+{{- fail "application.chartPath is required" -}}
+{{- end -}}
+{{- if not (eq (toString .Values.application.highAvailability.enabled) "true") -}}
+{{- fail "application must keep high availability enabled in formal GitOps values" -}}
+{{- end -}}
+{{- if lt (int .Values.application.topologySpread.minDomains) 2 -}}
+{{- fail "application.topologySpread.minDomains must be at least two" -}}
+{{- end -}}
+{{- if empty .Values.application.runtime.configMapName -}}
+{{- fail "application.runtime.configMapName is required" -}}
+{{- end -}}
+{{- if empty .Values.application.runtime.secretName -}}
+{{- fail "application.runtime.secretName is required" -}}
+{{- end -}}
+{{- if empty .Values.application.runtime.nextAuthSecretKey -}}
+{{- fail "application.runtime.nextAuthSecretKey is required" -}}
+{{- end -}}
+{{- if not (eq (toString .Values.application.gateway.enabled) "true") -}}
+{{- fail "application.gateway.enabled must remain true" -}}
+{{- end -}}
+{{- if eq (toString .Values.application.gateway.allowHttp) "true" -}}
+{{- fail "application Gateway cannot enable plaintext HTTP" -}}
+{{- end -}}
+{{- $_ := required "application.gateway.className is required" .Values.application.gateway.className -}}
+{{- $_ := required "application.gateway.hostname is required" .Values.application.gateway.hostname -}}
+{{- $_ := required "application.gateway.tlsSecretName is required" .Values.application.gateway.tlsSecretName -}}
+{{- range $name, $image := .Values.application.images -}}
+{{- if empty $image.repository -}}
+{{- fail (printf "application.images.%s.repository is required" $name) -}}
+{{- end -}}
+{{- if not (regexMatch "^sha256:[0-9a-f]{64}$" $image.digest) -}}
+{{- fail (printf "application.images.%s.digest must be an immutable sha256 digest" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- range $name, $workload := .Values.application.workloads -}}
+{{- if not (eq (toString $workload.enabled) "true") -}}
+{{- fail (printf "application.workloads.%s must remain enabled in formal values" $name) -}}
+{{- end -}}
+{{- if lt (int $workload.replicaCount) 2 -}}
+{{- fail (printf "application.workloads.%s high availability requires at least two replicas" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- $autoscalingEnabled := eq (toString .Values.application.autoscaling.enabled) "true" -}}
+{{- $kedaEnabled := eq (toString .Values.keda.enabled) "true" -}}
+{{- if and $autoscalingEnabled (not $kedaEnabled) -}}
+{{- fail "application autoscaling requires the reviewed KEDA operator" -}}
+{{- end -}}
+{{- $vllmMonitorEnabled := eq (toString .Values.observability.vllmRuntimePodMonitorEnabled) "true" -}}
+{{- if and $vllmMonitorEnabled (not (eq (toString .Values.observability.enabled) "true")) -}}
+{{- fail "vLLM autoscaling metrics require the observability stack" -}}
+{{- end -}}
+{{- if and $vllmMonitorEnabled (not $kedaEnabled) -}}
+{{- fail "vLLM autoscaling metrics require KEDA" -}}
+{{- end -}}
+{{- if and $vllmMonitorEnabled (not (eq (toString .Values.kserve.enabled) "true")) -}}
+{{- fail "vLLM autoscaling metrics require KServe" -}}
+{{- end -}}
+{{- if and $vllmMonitorEnabled (not (eq (toString .Values.releaseController.enabled) "true")) -}}
+{{- fail "vLLM autoscaling metrics require the release controller" -}}
+{{- end -}}
+{{- if $kedaEnabled -}}
+{{- $_ := required "keda.repositoryUrl is required" .Values.keda.repositoryUrl -}}
+{{- if ne .Values.keda.repositoryUrl "https://kedacore.github.io/charts" -}}
+{{- fail "keda.repositoryUrl must use the reviewed official Helm repository" -}}
+{{- end -}}
+{{- if ne .Values.keda.chart "keda" -}}
+{{- fail "keda.chart must be keda" -}}
+{{- end -}}
+{{- if not (regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+$" .Values.keda.version) -}}
+{{- fail "keda.version must be an exact MAJOR.MINOR.PATCH chart release" -}}
+{{- end -}}
+{{- $_ := required "keda.namespace is required" .Values.keda.namespace -}}
+{{- if lt (int .Values.keda.operatorReplicaCount) 2 -}}{{- fail "keda.operatorReplicaCount must be at least two" -}}{{- end -}}
+{{- if lt (int .Values.keda.metricsServerReplicaCount) 2 -}}{{- fail "keda.metricsServerReplicaCount must be at least two" -}}{{- end -}}
+{{- if lt (int .Values.keda.webhooksReplicaCount) 2 -}}{{- fail "keda.webhooksReplicaCount must be at least two" -}}{{- end -}}
+{{- if ne .Values.keda.topologySpread.topologyKey "kubernetes.io/hostname" -}}{{- fail "keda.topologySpread.topologyKey must be kubernetes.io/hostname" -}}{{- end -}}
+{{- if lt (int .Values.keda.topologySpread.minDomains) 2 -}}{{- fail "keda.topologySpread.minDomains must be at least two" -}}{{- end -}}
+{{- end -}}
+{{- if eq (toString .Values.inferenceGateway.enabled) "true" -}}
+{{- if not (eq (toString .Values.envoyGateway.enabled) "true") -}}
+{{- fail "Inference Gateway requires Envoy Gateway" -}}
+{{- end -}}
+{{- if not (eq (toString .Values.kserve.enabled) "true") -}}
+{{- fail "Inference Gateway requires KServe" -}}
+{{- end -}}
+{{- if ne .Values.inferenceGateway.crd.repositoryUrl "https://github.com/kubernetes-sigs/gateway-api-inference-extension.git" -}}
+{{- fail "inferenceGateway.crd.repositoryUrl must use the reviewed upstream repository" -}}
+{{- end -}}
+{{- if ne .Values.inferenceGateway.crd.revision "v1.5.0" -}}
+{{- fail "inferenceGateway.crd.revision must remain v1.5.0" -}}
+{{- end -}}
+{{- if ne .Values.inferenceGateway.crd.path "config/crd" -}}
+{{- fail "inferenceGateway.crd.path must remain config/crd" -}}
+{{- end -}}
+{{- if ne .Values.inferenceGateway.aiGateway.repositoryUrl "registry-1.docker.io/envoyproxy" -}}
+{{- fail "inferenceGateway.aiGateway.repositoryUrl must use the reviewed OCI repository" -}}
+{{- end -}}
+{{- if ne .Values.inferenceGateway.aiGateway.chart "ai-gateway-helm" -}}
+{{- fail "inferenceGateway.aiGateway.chart must remain ai-gateway-helm" -}}
+{{- end -}}
+{{- if ne .Values.inferenceGateway.aiGateway.version "v0.6.0" -}}
+{{- fail "inferenceGateway.aiGateway.version must remain v0.6.0" -}}
+{{- end -}}
+{{- $_ := required "inferenceGateway.aiGateway.namespace is required" .Values.inferenceGateway.aiGateway.namespace -}}
+{{- if lt (int .Values.inferenceGateway.aiGateway.controllerReplicaCount) 2 -}}
+{{- fail "Inference Gateway controller requires at least two replicas" -}}
+{{- end -}}
+{{- if not (eq (toString .Values.inferenceGateway.aiGateway.leaderElection) "true") -}}
+{{- fail "Inference Gateway controller requires leader election" -}}
+{{- end -}}
+{{- if or (ne (len .Values.inferenceGateway.aiGateway.watchNamespaces) 1) (ne (index .Values.inferenceGateway.aiGateway.watchNamespaces 0) .Values.releaseController.namespace) -}}
+{{- fail "Inference Gateway must watch only the model release namespace" -}}
+{{- end -}}
+{{- if ne .Values.inferenceGateway.aiGateway.service.name "ai-gateway-controller" -}}
+{{- fail "Inference Gateway extension service name is invalid" -}}
+{{- end -}}
+{{- if ne (int .Values.inferenceGateway.aiGateway.service.port) 1063 -}}
+{{- fail "Inference Gateway extension service port must remain 1063" -}}
+{{- end -}}
+{{- end -}}
+{{- if $autoscalingEnabled -}}
+{{- range $name, $config := .Values.application.autoscaling.hpa -}}
+{{- if lt (int $config.minReplicas) 2 -}}{{- fail (printf "application.autoscaling.hpa.%s.minReplicas must be at least two" $name) -}}{{- end -}}
+{{- if lt (int $config.maxReplicas) (int $config.minReplicas) -}}{{- fail (printf "application.autoscaling.hpa.%s.maxReplicas cannot be below minReplicas" $name) -}}{{- end -}}
+{{- end -}}
+{{- range $name, $config := dict "workflowWorker" .Values.application.autoscaling.keda.workflowWorker "eventWorker" .Values.application.autoscaling.keda.eventWorker -}}
+{{- if lt (int $config.minReplicaCount) 2 -}}{{- fail (printf "application.autoscaling.keda.%s.minReplicaCount must be at least two" $name) -}}{{- end -}}
+{{- if lt (int $config.fallback.replicas) (int $config.minReplicaCount) -}}{{- fail (printf "application.autoscaling.keda.%s fallback cannot be below minReplicaCount" $name) -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-platform-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "platform" "wave" "-60") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.platform.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.platform.chartPath }}
+    helm:
+      releaseName: industrial-ops-platform
+      valuesObject:
+        environment: {{ .Values.environment | quote }}
+        supplyChainAdmission:
+          enabled: {{ .Values.supplyChainPolicy.enabled }}
+        gateway:
+          enabled: false
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- if eq (toString .Values.externalSecrets.enabled) "true" }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "credential-controller" "wave" "-42") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.externalSecrets.namespace }}
+  source:
+    repoURL: {{ .Values.externalSecrets.repositoryUrl | quote }}
+    chart: {{ .Values.externalSecrets.chart }}
+    targetRevision: {{ .Values.externalSecrets.version | quote }}
+    helm:
+      releaseName: external-secrets
+      valuesObject:
+        installCRDs: true
+        replicaCount: {{ .Values.externalSecrets.controllerReplicaCount }}
+        leaderElect: true
+        controllerClass: {{ .Values.externalSecrets.controllerClass | quote }}
+        scopedNamespace: {{ .Values.externalSecrets.scopedNamespace | quote }}
+        scopedRBAC: true
+        processClusterExternalSecret: false
+        processClusterPushSecret: false
+        processClusterStore: false
+        processClusterGenerator: false
+        processPushSecret: false
+        processGenerator: false
+        genericTargets:
+          enabled: false
+        rbac:
+          serviceAccountTokenCreate: true
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+        topologySpreadConstraints:
+          - maxSkew: {{ .Values.externalSecrets.topologySpread.maxSkew }}
+            minDomains: {{ .Values.externalSecrets.topologySpread.minDomains }}
+            topologyKey: {{ .Values.externalSecrets.topologySpread.topologyKey }}
+            whenUnsatisfiable: DoNotSchedule
+        webhook:
+          replicaCount: {{ .Values.externalSecrets.webhookReplicaCount }}
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 1
+          topologySpreadConstraints:
+            - maxSkew: {{ .Values.externalSecrets.topologySpread.maxSkew }}
+              minDomains: {{ .Values.externalSecrets.topologySpread.minDomains }}
+              topologyKey: {{ .Values.externalSecrets.topologySpread.topologyKey }}
+              whenUnsatisfiable: DoNotSchedule
+        certController:
+          replicaCount: {{ .Values.externalSecrets.certControllerReplicaCount }}
+          podDisruptionBudget:
+            enabled: true
+            minAvailable: 1
+          topologySpreadConstraints:
+            - maxSkew: {{ .Values.externalSecrets.topologySpread.maxSkew }}
+              minDomains: {{ .Values.externalSecrets.topologySpread.minDomains }}
+              topologyKey: {{ .Values.externalSecrets.topologySpread.topologyKey }}
+              whenUnsatisfiable: DoNotSchedule
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-runtime-secrets-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "credential-delivery" "wave" "-35") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.application.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.externalSecrets.runtime.chartPath }}
+    helm:
+      releaseName: industrial-ops-runtime-secrets
+      valuesObject:
+        controllerClass: {{ .Values.externalSecrets.controllerClass | quote }}
+        serviceAccount:
+          {{- toYaml .Values.externalSecrets.runtime.serviceAccount | nindent 10 }}
+        secretStore:
+          {{- toYaml .Values.externalSecrets.runtime.secretStore | nindent 10 }}
+        externalSecret:
+          {{- toYaml .Values.externalSecrets.runtime.externalSecret | nindent 10 }}
+        target:
+          name: {{ .Values.externalSecrets.runtime.targetSecretName | quote }}
+        vault:
+          {{- toYaml .Values.externalSecrets.runtime.vault | nindent 10 }}
+        remote:
+          {{- toYaml .Values.externalSecrets.runtime.remote | nindent 10 }}
+        refreshPolicy: {{ .Values.externalSecrets.runtime.refreshPolicy }}
+        refreshInterval: {{ .Values.externalSecrets.runtime.refreshInterval | quote }}
+        lifecycle:
+          {{- toYaml .Values.externalSecrets.runtime.lifecycle | nindent 10 }}
+        mappings:
+          {{- toYaml .Values.externalSecrets.runtime.mappings | nindent 10 }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.application.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-application-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "application" "wave" "5") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.application.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.application.chartPath }}
+    helm:
+      releaseName: industrial-ops-application
+      valuesObject:
+        highAvailability:
+          enabled: {{ .Values.application.highAvailability.enabled }}
+        topologySpread:
+          {{- toYaml .Values.application.topologySpread | nindent 10 }}
+        runtime:
+          {{- toYaml .Values.application.runtime | nindent 10 }}
+        images:
+          {{- toYaml .Values.application.images | nindent 10 }}
+        workloads:
+          {{- toYaml .Values.application.workloads | nindent 10 }}
+        autoscaling:
+          {{- toYaml .Values.application.autoscaling | nindent 10 }}
+        gateway:
+          enabled: true
+          className: {{ .Values.application.gateway.className | quote }}
+          hostname: {{ .Values.application.gateway.hostname | quote }}
+          tlsSecretName: {{ .Values.application.gateway.tlsSecretName | quote }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if eq (toString .Values.keda.enabled) "true" }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "autoscaling" "wave" "-30") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.keda.namespace }}
+  source:
+    repoURL: {{ .Values.keda.repositoryUrl | quote }}
+    chart: {{ .Values.keda.chart }}
+    targetRevision: {{ .Values.keda.version | quote }}
+    helm:
+      releaseName: keda
+      valuesObject:
+        crds:
+          install: true
+        operator:
+          replicaCount: {{ .Values.keda.operatorReplicaCount }}
+        metricsServer:
+          replicaCount: {{ .Values.keda.metricsServerReplicaCount }}
+        webhooks:
+          replicaCount: {{ .Values.keda.webhooksReplicaCount }}
+        podDisruptionBudget:
+          operator:
+            minAvailable: 1
+          metricServer:
+            minAvailable: 1
+          webhooks:
+            minAvailable: 1
+        topologySpreadConstraints:
+          operator:
+            - maxSkew: {{ .Values.keda.topologySpread.maxSkew }}
+              minDomains: {{ .Values.keda.topologySpread.minDomains }}
+              topologyKey: {{ .Values.keda.topologySpread.topologyKey }}
+              whenUnsatisfiable: DoNotSchedule
+          metricsServer:
+            - maxSkew: {{ .Values.keda.topologySpread.maxSkew }}
+              minDomains: {{ .Values.keda.topologySpread.minDomains }}
+              topologyKey: {{ .Values.keda.topologySpread.topologyKey }}
+              whenUnsatisfiable: DoNotSchedule
+          webhooks:
+            - maxSkew: {{ .Values.keda.topologySpread.maxSkew }}
+              minDomains: {{ .Values.keda.topologySpread.minDomains }}
+              topologyKey: {{ .Values.keda.topologySpread.topologyKey }}
+              whenUnsatisfiable: DoNotSchedule
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.certManager.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "certificate" "wave" "-50") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.certManager.namespace }}
+  source:
+    repoURL: {{ .Values.certManager.repositoryUrl | quote }}
+    chart: {{ .Values.certManager.chart }}
+    targetRevision: {{ .Values.certManager.version | quote }}
+    helm:
+      releaseName: cert-manager
+      valuesObject:
+        crds:
+          enabled: true
+        prometheus:
+          enabled: true
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if eq (toString .Values.inferenceGateway.enabled) "true" }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: inference-extension-crd-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "inference-extension-crd" "wave" "-55") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.releaseController.namespace }}
+  source:
+    repoURL: {{ .Values.inferenceGateway.crd.repositoryUrl | quote }}
+    targetRevision: {{ .Values.inferenceGateway.crd.revision | quote }}
+    path: {{ .Values.inferenceGateway.crd.path }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-ai-gateway-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "inference-gateway" "wave" "-45") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.inferenceGateway.aiGateway.namespace }}
+  source:
+    repoURL: {{ .Values.inferenceGateway.aiGateway.repositoryUrl | quote }}
+    chart: {{ .Values.inferenceGateway.aiGateway.chart }}
+    targetRevision: {{ .Values.inferenceGateway.aiGateway.version | quote }}
+    helm:
+      releaseName: envoy-ai-gateway
+      valuesObject:
+        controller:
+          replicaCount: {{ .Values.inferenceGateway.aiGateway.controllerReplicaCount }}
+          leaderElection:
+            enabled: {{ .Values.inferenceGateway.aiGateway.leaderElection }}
+          watch:
+            namespaces:
+              {{- toYaml .Values.inferenceGateway.aiGateway.watchNamespaces | nindent 14 }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.envoyGateway.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-gateway-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "gateway" "wave" "-40") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.envoyGateway.namespace }}
+  source:
+    repoURL: {{ .Values.envoyGateway.repositoryUrl | quote }}
+    chart: {{ .Values.envoyGateway.chart }}
+    targetRevision: {{ .Values.envoyGateway.version | quote }}
+    helm:
+      releaseName: envoy-gateway
+      valuesObject:
+        deployment:
+          replicas: 2
+        {{- if eq (toString .Values.inferenceGateway.enabled) "true" }}
+        config:
+          envoyGateway:
+            extensionManager:
+              backendResources:
+                - group: inference.networking.k8s.io
+                  kind: InferencePool
+                  version: v1
+              service:
+                fqdn:
+                  hostname: {{ printf "%s.%s.svc.cluster.local" .Values.inferenceGateway.aiGateway.service.name .Values.inferenceGateway.aiGateway.namespace | quote }}
+                  port: {{ .Values.inferenceGateway.aiGateway.service.port }}
+              hooks:
+                xdsTranslator:
+                  post: [Translation, Cluster, Route]
+                  translation:
+                    listener:
+                      includeAll: true
+                    route:
+                      includeAll: true
+                    cluster:
+                      includeAll: true
+                    secret:
+                      includeAll: true
+        {{- end }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.envoyGateway.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-gateway-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "gateway-resource" "wave" "-35") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.releaseController.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.platform.chartPath }}
+    helm:
+      releaseName: industrial-ops-gateway
+      valuesObject:
+        environment: {{ .Values.environment | quote }}
+        namespaces: []
+        priorityClasses: {}
+        networkPolicy:
+          enabled: false
+        gateway:
+          enabled: true
+          namespace: {{ .Values.releaseController.namespace }}
+          name: {{ .Values.platform.gateway.name | quote }}
+          hostname: {{ .Values.platform.gateway.hostname | quote }}
+          tlsSecretName: {{ .Values.platform.gateway.tlsSecretName | quote }}
+          allowHttp: {{ .Values.platform.gateway.allowHttp }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.supplyChainPolicy.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sigstore-policy-controller-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "supply-chain-controller" "wave" "-45") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.supplyChainPolicy.namespace }}
+  source:
+    repoURL: {{ .Values.supplyChainPolicy.repositoryUrl | quote }}
+    chart: {{ .Values.supplyChainPolicy.chart }}
+    targetRevision: {{ .Values.supplyChainPolicy.version | quote }}
+    helm:
+      releaseName: policy-controller
+      valuesObject:
+        installCRDs: true
+        webhook:
+          replicaCount: 2
+          failurePolicy: Fail
+          configData:
+            no-match-policy: allow
+        serviceMonitor:
+          enabled: false
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-supply-chain-policy-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "supply-chain-policy" "wave" "-44") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.supplyChainPolicy.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.supplyChainPolicy.policyChartPath }}
+    helm:
+      releaseName: industrial-ops-supply-chain-policy
+      valuesObject:
+        imageRepositoryGlob: {{ .Values.supplyChainPolicy.imageRepositoryGlob | quote }}
+        certificateIdentityRegexp: {{ .Values.supplyChainPolicy.certificateIdentityRegexp | quote }}
+        certificateOidcIssuer: {{ .Values.supplyChainPolicy.certificateOidcIssuer | quote }}
+        mode: {{ .Values.supplyChainPolicy.mode | quote }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.observability.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-observability-stack-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "observability-stack" "wave" "-25") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.observability.namespace }}
+  source:
+    repoURL: {{ .Values.observability.repositoryUrl | quote }}
+    chart: {{ .Values.observability.chart }}
+    targetRevision: {{ .Values.observability.version | quote }}
+    helm:
+      releaseName: prometheus
+      valuesObject:
+        fullnameOverride: prometheus
+        alertmanager:
+          enabled: true
+        grafana:
+          enabled: true
+          admin:
+            existingSecret: {{ .Values.observability.grafanaAdminSecretName | quote }}
+            userKey: admin-user
+            passwordKey: admin-password
+          sidecar:
+            dashboards:
+              enabled: true
+              searchNamespace: ALL
+        prometheus:
+          prometheusSpec:
+            retention: {{ .Values.observability.retention | quote }}
+            ruleSelectorNilUsesHelmValues: false
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: {{ .Values.observability.storageSize | quote }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-observability-config-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "observability-config" "wave" "0") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.observability.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.observability.configChartPath }}
+    helm:
+      releaseName: industrial-ops-observability
+      valuesObject:
+        apiServiceMonitor:
+          enabled: {{ .Values.observability.apiServiceMonitorEnabled }}
+          namespace: {{ .Values.application.namespace | quote }}
+        workerServiceMonitors:
+          enabled: {{ .Values.observability.workerServiceMonitorsEnabled }}
+          namespace: {{ .Values.application.namespace | quote }}
+        vllmRuntimePodMonitor:
+          enabled: {{ .Values.observability.vllmRuntimePodMonitorEnabled }}
+          namespace: {{ .Values.releaseController.namespace | quote }}
+        otelCollector:
+          enabled: {{ .Values.observability.otelCollectorEnabled }}
+          tempoEndpoint: {{ .Values.observability.tempoEndpoint | quote }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.recovery.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-recovery-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "recovery" "wave" "5") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.recovery.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.recovery.chartPath }}
+    helm:
+      releaseName: industrial-ops-recovery
+      valuesObject:
+        reporter:
+          {{- toYaml .Values.recovery.reporter | nindent 10 }}
+        verificationJobs:
+          {{- toYaml .Values.recovery.verificationJobs | nindent 10 }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.gpuOperator.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gpu-operator-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "gpu" "wave" "-30") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.gpuOperator.namespace }}
+  source:
+    repoURL: {{ .Values.gpuOperator.repositoryUrl | quote }}
+    chart: {{ .Values.gpuOperator.chart }}
+    targetRevision: {{ .Values.gpuOperator.version | quote }}
+    helm:
+      releaseName: gpu-operator
+      valuesObject:
+        driver:
+          enabled: {{ .Values.gpuOperator.driverEnabled }}
+          kernelModuleType: auto
+        toolkit:
+          enabled: {{ .Values.gpuOperator.toolkitEnabled }}
+        cdi:
+          enabled: true
+        dcgmExporter:
+          enabled: true
+          serviceMonitor:
+            enabled: {{ .Values.gpuOperator.dcgmServiceMonitorEnabled }}
+        devicePlugin:
+          enabled: true
+        gfd:
+          enabled: true
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.kserve.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kserve-crd-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "kserve-crd" "wave" "-20") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.kserve.namespace }}
+  source:
+    repoURL: {{ .Values.kserve.repositoryUrl | quote }}
+    chart: {{ .Values.kserve.crdChart }}
+    targetRevision: {{ .Values.kserve.version | quote }}
+    helm:
+      releaseName: kserve-crd
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kserve-resources-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "kserve" "wave" "-10") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.kserve.namespace }}
+  source:
+    repoURL: {{ .Values.kserve.repositoryUrl | quote }}
+    chart: {{ .Values.kserve.resourcesChart }}
+    targetRevision: {{ .Values.kserve.version | quote }}
+    helm:
+      releaseName: kserve-resources
+      valuesObject:
+        kserve:
+          controller:
+            deploymentMode: Standard
+            gateway:
+              ingressGateway:
+                enableGatewayApi: true
+                kserveGateway: {{ printf "%s/%s" .Values.releaseController.namespace .Values.platform.gateway.name | quote }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}
+{{- if .Values.releaseController.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: industrial-ops-release-controller-{{ .Values.environment }}
+  namespace: {{ .Values.argocdNamespace }}
+  {{- include "industrial-ops-gitops.applicationMetadata" (dict "root" . "tier" "release-control" "wave" "10") | nindent 2 }}
+spec:
+  project: {{ .Values.projectName }}
+  destination:
+    server: {{ .Values.destinationServer | quote }}
+    namespace: {{ .Values.releaseController.namespace }}
+  source:
+    repoURL: {{ .Values.repository.url | quote }}
+    targetRevision: {{ .Values.repository.revision | quote }}
+    path: {{ .Values.releaseController.chartPath }}
+    helm:
+      releaseName: industrial-ops-release-controller
+      valuesObject:
+        replicaCount: {{ .Values.releaseController.replicaCount }}
+        leaderElection:
+          {{- toYaml .Values.releaseController.leaderElection | nindent 10 }}
+        image:
+          repository: {{ .Values.releaseController.image.repository | quote }}
+          digest: {{ .Values.releaseController.image.digest | quote }}
+        releaseNamespace: {{ .Values.releaseController.namespace }}
+        runtimeSecret:
+          {{- toYaml .Values.releaseController.runtimeSecret | nindent 10 }}
+        controller:
+          {{- toYaml .Values.releaseController.controller | nindent 10 }}
+  syncPolicy:
+    {{- include "industrial-ops-gitops.syncPolicy" . | nindent 4 }}
+{{- end }}

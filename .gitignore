@@ -1,0 +1,37 @@
+# Python runtime and build outputs
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Local environments and secrets
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+
+*.log
+.vscode/*.log
+.cache/
+.docker-cache/
+
+# Local generated evidence and model-training outputs
+artifacts/
+
+# Local Model Release API exports (not deployment configuration)
+/real-model-release-*.json

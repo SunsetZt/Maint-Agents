@@ -1,0 +1,16 @@
+{
+  "component": "postgresql",
+  "backup_id": "replace-with-provider-backup-id",
+  "backup_type": "PITR",
+  "recovery_point_at": "2025-01-01T00:00:00Z",
+  "captured_at": "2025-01-01T00:01:00Z",
+  "verification_status": "FAILED",
+  "verification_method": "PITR_RESTORE",
+  "evidence_ref": "replace-with-immutable-evidence-reference",
+  "artifact_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "immutable": false,
+  "encrypted": false,
+  "details": {
+    "wal_segment_count": 0
+  }
+}

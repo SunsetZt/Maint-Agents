@@ -1,0 +1,19 @@
+{{- include "industrial-ops-ai-platform.validate" . -}}
+{{- range .Values.namespaces }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .name }}
+  labels:
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+    industrial-ops.ai/environment: {{ $.Values.environment | quote }}
+    industrial-ops.ai/namespace-role: {{ .quotaProfile | quote }}
+    industrial-ops.ai/gateway-access: {{ .gatewayAccess | quote }}
+    pod-security.kubernetes.io/enforce: {{ .podSecurityLevel | quote }}
+    pod-security.kubernetes.io/audit: {{ .podSecurityLevel | quote }}
+    pod-security.kubernetes.io/warn: {{ .podSecurityLevel | quote }}
+    {{- if and $.Values.supplyChainAdmission.enabled (.enforceSignedImages | default false) }}
+    policy.sigstore.dev/include: "true"
+    {{- end }}
+{{- end }}

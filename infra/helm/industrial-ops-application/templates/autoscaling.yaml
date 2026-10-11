@@ -1,0 +1,109 @@
+{{- if eq (toString .Values.autoscaling.enabled) "true" -}}
+{{- $root := . -}}
+{{- $hpas := list
+  (dict "key" "api" "name" "api" "config" .Values.autoscaling.hpa.api)
+  (dict "key" "web" "name" "web" "config" .Values.autoscaling.hpa.web)
+  (dict "key" "mediaWorker" "name" "media-worker" "config" .Values.autoscaling.hpa.mediaWorker)
+-}}
+{{- range $item := $hpas }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ printf "industrial-ops-%s" $item.name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" $root | nindent 4 }}
+    {{- include "industrial-ops-application.workloadLabels" (dict "root" $root "component" $item.name) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ printf "industrial-ops-%s" $item.name }}
+  minReplicas: {{ $item.config.minReplicas }}
+  maxReplicas: {{ $item.config.maxReplicas }}
+  behavior:
+    {{- toYaml $root.Values.autoscaling.behavior | nindent 4 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $item.config.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $item.config.targetMemoryUtilizationPercentage }}
+{{- end }}
+{{ $workflow := .Values.autoscaling.keda.workflowWorker -}}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: industrial-ops-workflow-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+    {{- include "industrial-ops-application.workloadLabels" (dict "root" . "component" "workflow-worker") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: industrial-ops-workflow-worker
+  pollingInterval: {{ .Values.autoscaling.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod }}
+  minReplicaCount: {{ $workflow.minReplicaCount }}
+  maxReplicaCount: {{ $workflow.maxReplicaCount }}
+  fallback:
+    failureThreshold: {{ $workflow.fallback.failureThreshold }}
+    replicas: {{ $workflow.fallback.replicas }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        {{- toYaml .Values.autoscaling.behavior | nindent 8 }}
+  triggers:
+    - type: temporal
+      metadata:
+        endpoint: {{ $workflow.temporal.endpoint | quote }}
+        namespace: {{ $workflow.temporal.namespace | quote }}
+        taskQueue: {{ $workflow.temporal.taskQueue | quote }}
+        queueTypes: {{ $workflow.temporal.queueTypes | quote }}
+        targetQueueSize: {{ $workflow.temporal.targetQueueSize | quote }}
+        activationTargetQueueSize: {{ $workflow.temporal.activationTargetQueueSize | quote }}
+{{ $event := .Values.autoscaling.keda.eventWorker -}}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: industrial-ops-event-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" . | nindent 4 }}
+    {{- include "industrial-ops-application.workloadLabels" (dict "root" . "component" "event-worker") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: industrial-ops-event-worker
+  pollingInterval: {{ .Values.autoscaling.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod }}
+  minReplicaCount: {{ $event.minReplicaCount }}
+  maxReplicaCount: {{ $event.maxReplicaCount }}
+  fallback:
+    failureThreshold: {{ $event.fallback.failureThreshold }}
+    replicas: {{ $event.fallback.replicas }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        {{- toYaml .Values.autoscaling.behavior | nindent 8 }}
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: {{ $event.kafka.bootstrapServers | quote }}
+        topic: {{ $event.kafka.topic | quote }}
+        consumerGroup: {{ $event.kafka.consumerGroup | quote }}
+        lagThreshold: {{ $event.kafka.lagThreshold | quote }}
+        activationLagThreshold: {{ $event.kafka.activationLagThreshold | quote }}
+        offsetResetPolicy: {{ $event.kafka.offsetResetPolicy | quote }}
+        allowIdleConsumers: {{ $event.kafka.allowIdleConsumers | quote }}
+        scaleToZeroOnInvalidOffset: {{ $event.kafka.scaleToZeroOnInvalidOffset | quote }}
+{{- end }}

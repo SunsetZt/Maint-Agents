@@ -1,0 +1,53 @@
+{
+  "classification": "LOCAL_STAGING_PROJECT_AUTHORIZED",
+  "current_provider": {
+    "path": "src/industrial_ops_agent/deployment/kserve.py",
+    "sha256": "e1ed7ce32d3526d6e763c21c7d968d9b9107bbb0905d93bc43dc3872b5aa800b",
+    "size_bytes": 62490
+  },
+  "enterprise_scope": "PROJECT_INTERNAL",
+  "evidence_chain_sha256": "3acbd2463dc936225bc4a67d2d98f829e82013b1b5558eccb2a46ffa6d8dc463",
+  "external_enterprise_production_claim": false,
+  "generated_at": "2026-09-04T18:46:37.484474Z",
+  "hard_gates": {
+    "current_provider_binding_verified": true,
+    "governed_runtime_features_present": true,
+    "historical_readiness_chain_verified": true,
+    "no_production_claim_created": true,
+    "prior_compatibility_chain_verified": true,
+    "prior_provider_binding_preserved": true,
+    "reranker_ast_regions_bound": true
+  },
+  "prior_compatibility": {
+    "path": "artifacts/m7-reranker-kserve-readiness/provider-compatibility.json",
+    "sha256": "8700a28b99d85c4764d30b109786cddb50f38e25c2e99836f1cdc157f6f75acc",
+    "size_bytes": 2048
+  },
+  "prior_evidence_chain_sha256": "038cfc72ab90a7712fc758afefe8057c26a57b32029d0024b4f757942e106aa5",
+  "prior_provider": {
+    "path": "src/industrial_ops_agent/deployment/kserve.py",
+    "sha256": "f387fc38797e849869d61448c1a585123774617e5a40dbeb3e6921bb8ca2865a",
+    "size_bytes": 58352
+  },
+  "production_claim": false,
+  "projection": {
+    "full_source_syntax_valid": true,
+    "policy": "PINNED_CURRENT_PROVIDER_AND_RERANKER_AST_REGIONS",
+    "region_sha256": {
+      "KServeGatewayProvider.reconcile": "c715c674e8e3d7b342ac94ae90cf09327e9284119c92462bb3cda98ad7efed73",
+      "_reranker_inference_service": "f4d44f10609993f0d5561acd129de894747e67ebbec6568ed8b6183904ca366b",
+      "_reranker_labels": "95dc4d7226d229c830adbc086c33efd45f85c2828e8d2573d677f096a1088eb9",
+      "_reranker_serving_runtime": "9b37425cd1e18ba07cebd75c9a0c9439ee40ad58ac10ce20813e852bb928cdb4"
+    },
+    "required_features": [
+      "RERANKER_RUNTIME_PRESERVED",
+      "TTS_RUNTIME_PRESENT",
+      "RUL_RUNTIME_PRESENT",
+      "KSERVE_V019_STORAGE_URIS",
+      "LOCAL_GGUF_BINDING",
+      "PROVIDER_KIND_GUARD"
+    ]
+  },
+  "schema_version": "enterprise-reranker-kserve-provider-evolution/v1",
+  "status": "RERANKER_KSERVE_PROVIDER_EVOLUTION_VERIFIED"
+}

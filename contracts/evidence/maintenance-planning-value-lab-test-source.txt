@@ -1,0 +1,566 @@
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+from typing import Any
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
+from industrial_ops_agent.api.app import create_app
+from industrial_ops_agent.api.dependencies import get_identity
+from industrial_ops_agent.auth.identity import IdentityContext, Role
+from industrial_ops_agent.auth.policy import Authorizer
+from industrial_ops_agent.config import Environment, Settings
+from industrial_ops_agent.maintenance_planning import (
+    GovernedMaintenancePlanningBindingResolver,
+    MaintenancePlanningActivationConflict,
+    MaintenancePlanningActivationService,
+    MaintenancePlanningActivity,
+    MaintenancePlanningActivityInput,
+    MaintenancePlanningRuntimeBinding,
+)
+from industrial_ops_agent.persistence.database import Database
+from industrial_ops_agent.persistence.models import (
+    AssetRecord,
+    Base,
+    DiagnosisRunRecord,
+    IncidentRecord,
+    MaintenancePlanningContributionRecord,
+    MaintenancePlanningCouncilRecord,
+    MaintenancePlanningEvaluationRunRecord,
+    ModelInferenceRecord,
+    SubjectRecord,
+    TenantRecord,
+)
+from industrial_ops_agent.security_audit import InMemorySecurityAuditSink, SecurityAuditor
+
+
+@dataclass(frozen=True, slots=True)
+class _Harness:
+    client: AsyncClient
+    current_identity: dict[str, IdentityContext]
+    database: Database
+
+
+class _StaticMaintenancePlanningBindingResolver:
+    def resolve(self, identity: IdentityContext) -> MaintenancePlanningRuntimeBinding:
+        del identity
+        return MaintenancePlanningRuntimeBinding(
+            planning_profile="multi-agent-maintenance-planning/v1",
+            model_alias="industrial-diagnosis",
+            model_release_id="release-common",
+            model_manifest_hash="sha256:common-manifest",
+            prompt_bundle_id="industrial-maintenance-planning-council-v1",
+            prompt_bundle_hash=sha256(b"planning-prompt").hexdigest(),
+            response_schema_version="maintenance_planning_council_v1",
+        )
+
+
+class _UnexpectedMaintenancePlanningGateway:
+    def __init__(self) -> None:
+        self.called = False
+
+    async def complete(self, *args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        self.called = True
+        raise AssertionError("model gateway must not run after activation source drift")
+
+
+def _digest(value: Any) -> str:
+    return sha256(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _identity(subject_id: str, *roles: Role) -> IdentityContext:
+    now = datetime.now(UTC)
+    return IdentityContext(
+        subject_id=subject_id,
+        oidc_subject=f"oidc-{subject_id}",
+        tenant_id="tenant-planning-eval",
+        roles=frozenset(roles or (Role.DOMAIN_EXPERT,)),
+        asset_ids=frozenset({f"asset-eval-{index}" for index in range(1, 4)}),
+        site_ids=frozenset(),
+        issued_at=now,
+        expires_at=now + timedelta(hours=1),
+    )
+
+
+def _inference(
+    *,
+    inference_id: str,
+    diagnosis_id: str,
+    agent_run_id: str,
+    request_class: str,
+    latency_ms: float,
+    prompt_tokens: int,
+    completion_tokens: int,
+    now: datetime,
+) -> ModelInferenceRecord:
+    response = {"summary": inference_id}
+    return ModelInferenceRecord(
+        inference_request_id=inference_id,
+        tenant_id="tenant-planning-eval",
+        model_alias="industrial-diagnosis",
+        resolved_release_id="release-common",
+        manifest_hash="sha256:common-manifest",
+        subject_id="model-subject",
+        trace_id=f"trace:{inference_id}",
+        agent_run_id=agent_run_id,
+        diagnosis_run_id=diagnosis_id,
+        prompt_bundle_id="industrial-diagnosis-v1",
+        index_release_id=None,
+        context_manifest_json={},
+        context_hash=f"sha256:{sha256(inference_id.encode()).hexdigest()}",
+        request_class=request_class,
+        data_classification="CONFIDENTIAL",
+        status="SUCCEEDED",
+        deadline=now + timedelta(minutes=5),
+        max_output_tokens=1_024,
+        temperature=0.0,
+        prompt_hash=sha256(f"prompt:{inference_id}".encode()).hexdigest(),
+        response_json=response,
+        response_hash=_digest(response),
+        usage_prompt_tokens=prompt_tokens,
+        usage_completion_tokens=completion_tokens,
+        finish_reason="stop",
+        latency_breakdown_json={"upstream_total_ms": latency_ms},
+        safety_decision="ALLOWED",
+        guardrail_policy_version="m6-test",
+        guardrail_findings_json=[],
+        degraded_from=None,
+        failure_reason=None,
+        completed_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+@pytest_asyncio.fixture
+async def evaluation_harness() -> AsyncIterator[_Harness]:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    now = datetime.now(UTC)
+    with Session(engine) as session:
+        session.add(TenantRecord(id="tenant-planning-eval", status="active"))
+        session.add(SubjectRecord(
+            tenant_id="tenant-planning-eval", subject_id="evaluation-creator",
+            oidc_issuer="https://example.invalid", oidc_subject="oidc-evaluation-creator",
+            status="active", version=1,
+        ))
+        for index in range(1, 4):
+            asset_id = f"asset-eval-{index}"
+            diagnosis_id = f"diagnosis-eval-{index}"
+            council_id = f"council-eval-{index}"
+            agent_run_id = f"agent-eval-{index}"
+            report = {
+                "status": "COMPLETED",
+                "conclusion": f"单 Agent 基线诊断 {index}",
+                "next_checks": ["检查压力"],
+                "missing_information": [],
+            }
+            manifest = {
+                "model_release": "release-common",
+                "prompt_bundle": "industrial-diagnosis-v1",
+            }
+            session.add(
+                AssetRecord(
+                    tenant_id="tenant-planning-eval",
+                    asset_id=asset_id,
+                    source_system="synthetic-eam",
+                    source_record_id=f"pump-eval-{index}",
+                    as_of=now,
+                    model_code="PUMP-X100",
+                    version=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                IncidentRecord(
+                    tenant_id="tenant-planning-eval",
+                    incident_id=f"incident-eval-{index}",
+                    asset_id=asset_id,
+                    source_draft_id=f"draft-eval-{index}",
+                    evidence_bundle_id=f"bundle-eval-{index}",
+                    reporter_subject_id="evaluation-reporter",
+                    description="过滤器压差异常，需要生成受治理维修方案。",
+                    severity="HIGH",
+                    category="MECHANICAL",
+                    responsible_queue="pump-maintenance",
+                    status="DIAGNOSED",
+                    version=2,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                DiagnosisRunRecord(
+                    tenant_id="tenant-planning-eval",
+                    diagnosis_run_id=diagnosis_id,
+                    incident_id=f"incident-eval-{index}",
+                    evidence_bundle_id=f"bundle-eval-{index}",
+                    agent_run_id=agent_run_id,
+                    workflow_id=f"workflow-eval-{index}",
+                    status="COMPLETED",
+                    manifest=manifest,
+                    report=report,
+                    stop_reason="diagnosis_completed",
+                    version=2,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            plan = {
+                "agent_role": "COORDINATOR",
+                "summary": f"四 Agent 候选维修方案 {index}",
+                "recommendations": ["隔离设备后更换过滤器"],
+                "constraints": ["不得自动执行"],
+                "missing_facts": [],
+                "safety_hold_points": ["确认断电和泄压"],
+                "required_parts": [
+                    {
+                        "part_reference": "FILTER-X100",
+                        "quantity": 1,
+                        "reason": "压差异常",
+                    }
+                ],
+                "dispatch_constraints": ["泵组资质"],
+                "source_roles": ["SAFETY", "PARTS", "DISPATCH"],
+                "readiness": "READY_FOR_HUMAN_REVIEW",
+            }
+            session.add(
+                MaintenancePlanningCouncilRecord(
+                    council_id=council_id,
+                    tenant_id="tenant-planning-eval",
+                    incident_id=f"incident-eval-{index}",
+                    diagnosis_run_id=diagnosis_id,
+                    asset_id=asset_id,
+                    diagnosis_version=2,
+                    diagnosis_report_digest=_digest(report),
+                    diagnosis_manifest_digest=_digest(manifest),
+                    idempotency_key=f"council-idempotency-{index}",
+                    request_hash=sha256(f"request-{index}".encode()).hexdigest(),
+                    workflow_id=f"council-workflow-{index}",
+                    model_alias="industrial-diagnosis",
+                    model_release_id="release-common",
+                    model_manifest_hash="sha256:common-manifest",
+                    prompt_bundle_id="industrial-maintenance-planning-council-v1",
+                    prompt_bundle_hash=sha256(b"planning-prompt").hexdigest(),
+                    response_schema_version="maintenance_planning_council_v1",
+                    status="REVIEW_PENDING",
+                    stage="REVIEW_PENDING",
+                    attempt_count=1,
+                    plan_json=plan,
+                    result_digest=_digest(plan),
+                    coordinator_context_hash=sha256(f"context-{index}".encode()).hexdigest(),
+                    failure_code=None,
+                    requested_by_subject_id="council-requester",
+                    reviewed_by_subject_id=None,
+                    review_decision=None,
+                    review_reason=None,
+                    started_at=now,
+                    completed_at=now,
+                    reviewed_at=None,
+                    version=3,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add(
+                _inference(
+                    inference_id=f"baseline-inference-{index}",
+                    diagnosis_id=diagnosis_id,
+                    agent_run_id=agent_run_id,
+                    request_class="DIAGNOSIS",
+                    latency_ms=100,
+                    prompt_tokens=100,
+                    completion_tokens=50,
+                    now=now,
+                )
+            )
+            for role_index, role in enumerate(
+                ("SAFETY", "PARTS", "DISPATCH", "COORDINATOR"), start=1
+            ):
+                inference_id = f"council-inference-{index}-{role.lower()}"
+                contribution_output = dict(plan)
+                contribution_output["agent_role"] = role
+                session.add(
+                    MaintenancePlanningContributionRecord(
+                        contribution_id=f"contribution-{index}-{role.lower()}",
+                        tenant_id="tenant-planning-eval",
+                        council_id=council_id,
+                        attempt_number=1,
+                        agent_role=role,
+                        inference_request_id=inference_id,
+                        input_digest=sha256(f"input-{index}-{role}".encode()).hexdigest(),
+                        output_json=contribution_output,
+                        output_digest=_digest(contribution_output),
+                        model_release_id="release-common",
+                        model_manifest_hash="sha256:common-manifest",
+                        context_hash=sha256(f"context-{index}-{role}".encode()).hexdigest(),
+                        completed_at=now,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                session.add(
+                    _inference(
+                        inference_id=inference_id,
+                        diagnosis_id=diagnosis_id,
+                        agent_run_id=agent_run_id,
+                        request_class="MAINTENANCE_PLANNING",
+                        latency_ms=120 if role == "COORDINATOR" else 100,
+                        prompt_tokens=60,
+                        completion_tokens=40,
+                        now=now + timedelta(milliseconds=role_index),
+                    )
+                )
+        session.commit()
+
+    database = Database.from_engine(engine)
+    auditor = SecurityAuditor(InMemorySecurityAuditSink(), hash_key=b"planning-evaluation")
+    current_identity = {"value": _identity("evaluation-creator")}
+    app = create_app(
+        Settings(environment=Environment.TEST, _env_file=None),
+        database=database,
+        authorizer=Authorizer(auditor),
+        security_auditor=auditor,
+    )
+    app.dependency_overrides[get_identity] = lambda: current_identity["value"]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        yield _Harness(client=client, current_identity=current_identity, database=database)
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_blind_gold_evaluation_recommends_project_candidate_without_activation(
+    evaluation_harness: _Harness,
+) -> None:
+    suite_response = await evaluation_harness.client.post(
+        "/api/v1/maintenance-planning-evaluation-suites",
+        json={
+            "name": "PUMP-X100 maintenance planning Gold",
+            "suite_version": "2026.08",
+            "evidence_tier": "PROJECT_STAGING_GOLD",
+            "cases": [
+                {
+                    "diagnosis_run_id": f"diagnosis-eval-{index}",
+                    "expected_findings": ["过滤器压差异常"],
+                    "required_safety_hold_points": ["确认断电和泄压"],
+                    "allowed_parts": ["FILTER-X100"],
+                    "required_dispatch_constraints": ["泵组资质"],
+                    "high_risk": True,
+                }
+                for index in range(1, 4)
+            ],
+        },
+    )
+    assert suite_response.status_code == 201
+    suite = suite_response.json()["data"]
+    assert suite["sample_count"] == 3
+    assert suite["status"] == "FROZEN"
+
+    run_response = await evaluation_harness.client.post(
+        "/api/v1/maintenance-planning-evaluations",
+        headers={"Idempotency-Key": "planning-value-evaluation-1"},
+        json={
+            "suite_id": suite["suite_id"],
+            "council_ids": [f"council-eval-{index}" for index in range(1, 4)],
+        },
+    )
+    assert run_response.status_code == 201
+    run = run_response.json()["data"]
+    assert run["status"] == "JUDGING"
+    assert run["decision"] == "PENDING"
+    assert run["comparison_blinded"] is True
+    assert all(pair["revealed_assignment"] is None for pair in run["pairs"])
+
+    for judge in ("blind-judge-1", "blind-judge-2"):
+        evaluation_harness.current_identity["value"] = _identity(judge)
+        for pair in run["pairs"]:
+            candidate_is_a = str(pair["variant_a"]["summary"]).startswith("四 Agent")
+            candidate_score = {
+                "plan_quality": 4.8,
+                "factual_error_count": 0,
+                "safety_omission_count": 0,
+                "parts_false_positive_count": 0,
+                "dispatch_executability": 5,
+                "expert_review_seconds": 30,
+            }
+            baseline_score = {
+                "plan_quality": 3,
+                "factual_error_count": 1,
+                "safety_omission_count": 1,
+                "parts_false_positive_count": 1,
+                "dispatch_executability": 3,
+                "expert_review_seconds": 60,
+            }
+            response = await evaluation_harness.client.post(
+                f"/api/v1/maintenance-planning-evaluations/{run['evaluation_id']}"
+                f"/cases/{pair['case_id']}/judgments",
+                json={
+                    "variant_a": candidate_score if candidate_is_a else baseline_score,
+                    "variant_b": baseline_score if candidate_is_a else candidate_score,
+                    "preferred_variant": "A" if candidate_is_a else "B",
+                    "rationale": "候选方案安全停点、备件和派工资格更完整且无事实回归。",
+                },
+            )
+            assert response.status_code == 200
+            run = response.json()["data"]
+
+    assert run["status"] == "COMPLETED"
+    assert run["decision"] == "PROJECT_CANDIDATE_ELIGIBLE"
+    assert run["activation_changed"] is False
+    assert run["comparison_blinded"] is False
+    assert run["aggregate_metrics"]["quality_ci_low"] > 0
+    assert run["aggregate_metrics"]["candidate_latency_ratio"] < 4.5
+    assert run["aggregate_metrics"]["candidate_token_ratio"] < 5
+    assert run["gate_results"]["project_sample_size_sufficient"] is True
+    assert run["gate_results"]["production_sample_size_sufficient"] is False
+    assert run["gate_results"]["enterprise_gold_tier"] is False
+    assert all(pair["revealed_assignment"] is not None for pair in run["pairs"])
+
+    evaluation_harness.current_identity["value"] = _identity("activation-requester")
+    production_response = await evaluation_harness.client.post(
+        "/api/v1/maintenance-planning-activations",
+        headers={"Idempotency-Key": "planning-production-activation-1"},
+        json={
+            "evaluation_id": run["evaluation_id"],
+            "target_environment": "PRODUCTION",
+            "reason": "申请生产启用以验证企业 Gold 门禁。",
+        },
+    )
+    assert production_response.status_code == 409
+    assert (
+        production_response.json()["error"]["code"]
+        == "maintenance_planning_activation_production_candidate_required"
+    )
+
+    request_response = await evaluation_harness.client.post(
+        "/api/v1/maintenance-planning-activations",
+        headers={"Idempotency-Key": "planning-project-activation-1"},
+        json={
+            "evaluation_id": run["evaluation_id"],
+            "target_environment": "PROJECT_STAGING",
+            "reason": "盲评净收益门禁通过，申请项目 Staging 启用。",
+        },
+    )
+    assert request_response.status_code == 201
+    activation = request_response.json()["data"]
+    assert activation["status"] == "PENDING_APPROVAL"
+    assert activation["runtime_activation_authorized"] is False
+    assert activation["legal_actions"] == []
+
+    evaluation_harness.current_identity["value"] = _identity(
+        "activation-approver", Role.TENANT_ADMIN
+    )
+    approval_response = await evaluation_harness.client.post(
+        f"/api/v1/maintenance-planning-activations/{activation['activation_id']}/decision",
+        headers={"If-Match": str(activation["version"])},
+        json={
+            "decision": "APPROVE",
+            "reason": "已独立复核 Gold、报告摘要与项目 Staging 回滚边界。",
+        },
+    )
+    assert approval_response.status_code == 200
+    activation = approval_response.json()["data"]
+    assert activation["status"] == "ACTIVE"
+    assert activation["runtime_activation_authorized"] is True
+    assert activation["legal_actions"] == ["ROLLBACK"]
+
+    activation_service = MaintenancePlanningActivationService(evaluation_harness.database)
+    binding = activation_service.resolve_active("tenant-planning-eval", "PROJECT_STAGING")
+    assert binding.activation_id == activation["activation_id"]
+    assert binding.activation_policy_hash == activation["activation_policy_hash"]
+
+    governed_resolver = GovernedMaintenancePlanningBindingResolver(
+        _StaticMaintenancePlanningBindingResolver(),
+        activation_service,
+        target_environment="PROJECT_STAGING",
+    )
+    governed_binding = governed_resolver.resolve(evaluation_harness.current_identity["value"])
+    assert governed_binding.activation_id == activation["activation_id"]
+    assert governed_binding.activation_evaluation_id == run["evaluation_id"]
+    assert governed_binding.activation_evaluation_report_hash == run["report_hash"]
+
+    with evaluation_harness.database.transaction(
+        evaluation_harness.current_identity["value"].tenant_context
+    ) as session:
+        persisted_evaluation = session.scalar(
+            select(MaintenancePlanningEvaluationRunRecord).where(
+                MaintenancePlanningEvaluationRunRecord.evaluation_id == run["evaluation_id"]
+            )
+        )
+        assert persisted_evaluation is not None
+        persisted_evaluation.report_hash = "f" * 64
+        governed_council = session.scalar(
+            select(MaintenancePlanningCouncilRecord).where(
+                MaintenancePlanningCouncilRecord.council_id == "council-eval-1"
+            )
+        )
+        assert governed_council is not None
+        governed_council.activation_id = activation["activation_id"]
+        governed_council.activation_policy_hash = activation["activation_policy_hash"]
+        governed_council.activation_target_environment = "PROJECT_STAGING"
+        governed_council.status = "QUEUED"
+        governed_council.stage = "QUEUED"
+        governed_council.plan_json = None
+        governed_council.result_digest = None
+        governed_council.coordinator_context_hash = None
+        governed_council.completed_at = None
+        governed_council.version += 1
+
+    with pytest.raises(
+        MaintenancePlanningActivationConflict,
+        match="maintenance_planning_activation_source_binding_changed",
+    ):
+        activation_service.resolve_active("tenant-planning-eval", "PROJECT_STAGING")
+
+    gateway = _UnexpectedMaintenancePlanningGateway()
+    activity = MaintenancePlanningActivity(
+        evaluation_harness.database,
+        gateway,
+        timeout_seconds=1,
+    )
+    failed_council = await activity.execute(
+        MaintenancePlanningActivityInput(
+            council_id="council-eval-1",
+            workflow_id="council-workflow-1",
+            identity=evaluation_harness.current_identity["value"],
+            request_id="activation-source-drift-activity",
+        )
+    )
+    assert gateway.called is False
+    assert failed_council.status == "FAILED"
+    assert failed_council.stage == "SOURCE_VALIDATION_FAILED"
+    assert failed_council.failure_code == "maintenance_planning_source_binding_changed"
+
+    rollback_response = await evaluation_harness.client.post(
+        f"/api/v1/maintenance-planning-activations/{activation['activation_id']}/rollback",
+        headers={"If-Match": str(activation["version"])},
+        json={"reason": "来源摘要漂移，立即回滚项目 Staging 启用。"},
+    )
+    assert rollback_response.status_code == 200
+    activation = rollback_response.json()["data"]
+    assert activation["status"] == "ROLLED_BACK"
+    assert activation["runtime_activation_authorized"] is False
+    with pytest.raises(
+        MaintenancePlanningActivationConflict,
+        match="maintenance_planning_active_activation_required",
+    ):
+        activation_service.resolve_active("tenant-planning-eval", "PROJECT_STAGING")

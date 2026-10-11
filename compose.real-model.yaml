@@ -1,0 +1,161 @@
+services:
+  gpu-probe:
+    image: ${IOAP_GPU_PROBE_IMAGE:?set a digest-pinned NVIDIA GPU probe image}
+    command:
+      - nvidia-smi
+      - --query-gpu=name,memory.total,driver_version
+      - --format=csv,noheader
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks: [model-serving]
+    restart: "no"
+
+  diagnosis-model:
+    image: ${IOAP_DIAGNOSIS_MODEL_IMAGE:?set a digest-pinned diagnosis model image}
+    environment:
+      IOAP_SERVED_MODEL_NAME: ${IOAP_DIAGNOSIS_MODEL_ID:?set the governed diagnosis model ID}
+      IOAP_MODEL_PATH: ${IOAP_DIAGNOSIS_MODEL_PATH:?set the in-image diagnosis model path}
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    volumes:
+      - diagnosis-model-cache:/root/.cache
+    networks: [model-serving]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  vlm-model:
+    image: ${IOAP_VLM_MODEL_IMAGE:?set a digest-pinned VLM image}
+    environment:
+      IOAP_SERVED_MODEL_NAME: ${IOAP_VLM_MODEL_ID:?set the governed VLM model ID}
+      IOAP_MODEL_PATH: ${IOAP_VLM_MODEL_PATH:?set the in-image VLM model path}
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    volumes:
+      - vlm-model-cache:/root/.cache
+    networks: [model-serving]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  model-serving-gateway:
+    image: ${IOAP_MODEL_ROUTER_IMAGE:?set a digest-pinned model router image}
+    environment:
+      IOAP_DIAGNOSIS_UPSTREAM_URL: http://diagnosis-model:8000/v1
+      IOAP_DIAGNOSIS_MODEL_ID: ${IOAP_DIAGNOSIS_MODEL_ID:?set the governed diagnosis model ID}
+      IOAP_VLM_UPSTREAM_URL: http://vlm-model:8000/v1
+      IOAP_VLM_MODEL_ID: ${IOAP_VLM_MODEL_ID:?set the governed VLM model ID}
+      IOAP_MODEL_GATEWAY_API_KEY_FILE: /run/secrets/model-gateway-api-key
+    secrets:
+      - source: model-gateway-api-key
+        target: model-gateway-api-key
+    depends_on:
+      diagnosis-model:
+        condition: service_healthy
+      vlm-model:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [backend, model-serving]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  api:
+    environment:
+      IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT: ${IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT:?set STAGING or PRODUCTION}
+      IOAP_MODEL_GATEWAY_ALIAS: ${IOAP_MODEL_GATEWAY_ALIAS:?set the governed diagnosis alias}
+      IOAP_VLM_MODEL_ALIAS: ${IOAP_VLM_MODEL_ALIAS:?set the governed VLM alias}
+    depends_on:
+      gpu-probe:
+        condition: service_completed_successfully
+      model-serving-gateway:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${M1_API_PORT:-8000}:8000"
+
+  worker:
+    environment:
+      IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT: ${IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT:?set STAGING or PRODUCTION}
+      IOAP_MODEL_GATEWAY_ALIAS: ${IOAP_MODEL_GATEWAY_ALIAS:?set the governed diagnosis alias}
+      IOAP_VLM_MODEL_ALIAS: ${IOAP_VLM_MODEL_ALIAS:?set the governed VLM alias}
+    depends_on:
+      gpu-probe:
+        condition: service_completed_successfully
+      model-serving-gateway:
+        condition: service_healthy
+
+  workflow-worker:
+    labels:
+      io.industrial-ops.workload: industrial-ops-workflow-worker
+    environment:
+      IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT: ${IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT:?set STAGING or PRODUCTION}
+      IOAP_MODEL_GATEWAY_ALIAS: ${IOAP_MODEL_GATEWAY_ALIAS:?set the governed diagnosis alias}
+      IOAP_VLM_MODEL_ALIAS: ${IOAP_VLM_MODEL_ALIAS:?set the governed VLM alias}
+    depends_on:
+      gpu-probe:
+        condition: service_completed_successfully
+      model-serving-gateway:
+        condition: service_healthy
+
+volumes:
+  diagnosis-model-cache:
+  vlm-model-cache:
+
+networks:
+  model-serving:
+    internal: true
+
+secrets:
+  model-gateway-api-key:
+    environment: IOAP_MODEL_GATEWAY_API_KEY

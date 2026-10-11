@@ -1,0 +1,55 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  filelog/ioap:
+    include:
+      - /var/log/ioap/*.json
+    start_at: end
+    operators:
+      - type: json_parser
+      - type: move
+        from: body.service
+        to: resource["service.name"]
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+  resource/ioap:
+    attributes:
+      - key: service.namespace
+        value: industrial-ops
+        action: upsert
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/ioap, batch]
+      exporters: [otlphttp/tempo]
+    logs:
+      receivers: [filelog/ioap]
+      processors: [memory_limiter, resource/ioap, batch]
+      exporters: [otlphttp/loki]

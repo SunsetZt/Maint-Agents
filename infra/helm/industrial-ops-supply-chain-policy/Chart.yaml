@@ -1,0 +1,6 @@
+apiVersion: v2
+name: industrial-ops-supply-chain-policy
+description: Sigstore admission policy for signed Industrial Ops runtime images
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

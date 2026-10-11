@@ -1,0 +1,1 @@
+"""Tenant-keyed cache adapters."""

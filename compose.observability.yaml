@@ -1,0 +1,128 @@
+# Combine with compose.lite.yaml and compose.integration.yaml. The integration
+# file owns event-worker; this file adds only telemetry configuration and stores.
+services:
+  api:
+    environment:
+      IOAP_SERVICE_NAME: industrial-ops-api
+      IOAP_RELEASE_VERSION: ${IOAP_RELEASE_VERSION:-development}
+      IOAP_OTEL_ENABLED: "true"
+      IOAP_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      IOAP_LOG_FILE: /var/log/ioap/api.json
+      IOAP_PROMETHEUS_URL: http://prometheus:9090
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+      - observability-app-logs:/var/log/ioap
+    depends_on:
+      observability-log-init:
+        condition: service_completed_successfully
+
+  workflow-worker:
+    environment:
+      IOAP_SERVICE_NAME: industrial-ops-workflow-worker
+      IOAP_RELEASE_VERSION: ${IOAP_RELEASE_VERSION:-development}
+      IOAP_OTEL_ENABLED: "true"
+      IOAP_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      IOAP_LOG_FILE: /var/log/ioap/workflow-worker.json
+      IOAP_WORKFLOW_WORKER_METRICS_PORT: "9101"
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+      - observability-app-logs:/var/log/ioap
+    depends_on:
+      observability-log-init:
+        condition: service_completed_successfully
+
+  event-worker:
+    environment:
+      IOAP_SERVICE_NAME: industrial-ops-event-worker
+      IOAP_RELEASE_VERSION: ${IOAP_RELEASE_VERSION:-development}
+      IOAP_OTEL_ENABLED: "true"
+      IOAP_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      IOAP_LOG_FILE: /var/log/ioap/event-worker.json
+      IOAP_EVENT_WORKER_METRICS_PORT: "9102"
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+      - observability-app-logs:/var/log/ioap
+    depends_on:
+      observability-log-init:
+        condition: service_completed_successfully
+
+  observability-log-init:
+    image: alpine:3.22.2
+    user: "0:0"
+    command: ["sh", "-c", "chown 10001:10001 /var/log/ioap && chmod 0750 /var/log/ioap"]
+    volumes:
+      - observability-app-logs:/var/log/ioap
+    network_mode: none
+    restart: "no"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.153.0
+    user: "10001:10001"
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infra/observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - observability-app-logs:/var/log/ioap:ro
+    depends_on: [tempo, loki]
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  tempo:
+    image: grafana/tempo:2.10.7
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infra/observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    networks: [backend]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+  loki:
+    image: grafana/loki:3.7.2
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./infra/observability/loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks: [backend]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./infra/observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - prometheus-data:/prometheus
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    security_opt: [no-new-privileges:true]
+
+  grafana:
+    image: grafana/grafana:13.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${IOAP_GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${IOAP_GRAFANA_ADMIN_PASSWORD:-industrial-ops-local}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${IOAP_GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus, tempo, loki]
+    networks: [backend]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  observability-app-logs:
+  tempo-data:
+  loki-data:
+  prometheus-data:
+  grafana-data:

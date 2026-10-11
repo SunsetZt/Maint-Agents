@@ -1,0 +1,73 @@
+prometheusRule:
+  enabled: true
+
+grafanaDashboard:
+  enabled: true
+  label: grafana_dashboard
+  labelValue: "1"
+
+apiServiceMonitor:
+  enabled: false
+  namespace: industrial-apps
+  interval: 30s
+  scrapeTimeout: 10s
+  serviceSelector:
+    app.kubernetes.io/name: industrial-ops-api
+  port: http
+  path: /metrics
+
+workerServiceMonitors:
+  enabled: false
+  namespace: industrial-apps
+  interval: 30s
+  scrapeTimeout: 10s
+  workers:
+    - name: workflow-worker
+      serviceSelector:
+        app.kubernetes.io/name: industrial-ops-workflow-worker
+      port: metrics
+    - name: event-worker
+      serviceSelector:
+        app.kubernetes.io/name: industrial-ops-event-worker
+      port: metrics
+
+vllmRuntimePodMonitor:
+  enabled: false
+  namespace: industrial-models
+  interval: 15s
+  scrapeTimeout: 10s
+
+timeseriesRuntimePodMonitor:
+  enabled: false
+  namespace: industrial-models
+  interval: 15s
+  scrapeTimeout: 10s
+
+rerankerRuntimePodMonitor:
+  enabled: false
+  namespace: industrial-models
+  interval: 15s
+  scrapeTimeout: 10s
+
+embeddingRuntimePodMonitor:
+  enabled: false
+  namespace: industrial-models
+  interval: 15s
+  scrapeTimeout: 10s
+
+otelCollector:
+  enabled: false
+  replicas: 2
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: 0.153.0
+    pullPolicy: IfNotPresent
+  tempoEndpoint: https://tempo.example.invalid/otlp
+  memoryLimitMiB: 384
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

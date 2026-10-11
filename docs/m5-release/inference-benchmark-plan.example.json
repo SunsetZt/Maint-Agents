@@ -1,0 +1,75 @@
+{
+  "schema_version": "industrial-inference-benchmark-plan-v1",
+  "benchmark_id": "industrial-diagnosis-runtime-competition-v1",
+  "release_id": "replace-with-candidate-release-id",
+  "model": {
+    "served_model_id": "replace-with-served-model-id",
+    "model_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "adapter_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "tokenizer_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "runtime": {
+    "profile": "PROD_GENERAL",
+    "engine": "vllm",
+    "endpoint_url": "https://vllm-benchmark.models.example.com",
+    "image_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "hardware": {
+    "gpu_model": "NVIDIA L40S",
+    "gpu_count": 1,
+    "memory_per_gpu_bytes": 51539607552,
+    "driver_version": "replace-with-driver-version",
+    "cuda_version": "12.9"
+  },
+  "dataset_snapshot_id": "replace-with-frozen-benchmark-snapshot-id",
+  "workload_digest": "",
+  "cases": [
+    {
+      "case_id": "pump-bearing-temperature",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你是工业设备诊断助手，只输出符合给定 Schema 的 JSON。"
+        },
+        {
+          "role": "user",
+          "content": "泵轴承温度持续升高且伴随高频振动，请输出初步判断。"
+        }
+      ],
+      "response_schema_name": "industrial_diagnosis",
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "max_output_tokens": 256
+    }
+  ],
+  "execution": {
+    "concurrency": 8,
+    "repeats": 20,
+    "warmup_requests": 5,
+    "timeout_seconds": 60,
+    "temperature": 0,
+    "seed": 42,
+    "normalized_service_parameters": {
+      "max_model_len": 8192,
+      "precision": "bfloat16",
+      "quantization": "none",
+      "tensor_parallel_size": 1
+    }
+  },
+  "thresholds": {
+    "minimum_request_success_rate": 0.99,
+    "minimum_structured_success_rate": 0.99,
+    "maximum_error_rate": 0.01,
+    "maximum_p95_latency_ms": 5000
+  }
+}

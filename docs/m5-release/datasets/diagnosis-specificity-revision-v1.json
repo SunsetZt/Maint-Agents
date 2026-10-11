@@ -1,0 +1,171 @@
+{
+  "schema_version": "diagnosis-target-specificity-revision/v1",
+  "revision_id": "diagnosis-specificity-revision-v1",
+  "source_catalog": "artifacts/diagnosis-supplement-training-20260908/reviewed-catalog.json",
+  "source_sha256": "790cdd5ccdba22118991e0ee95cd2aa803a7c9fc43da47029eeb4aa3005eecc9",
+  "review_status": "PENDING",
+  "authored_by": "AI_ASSISTANT",
+  "human_content_confirmation": null,
+  "purpose": "Clarify objects in existing training targets without changing inputs, diagnoses, citations, confidence or evaluation data.",
+  "allowed_target_fields": [
+    "contradictions",
+    "missing_information",
+    "next_checks"
+  ],
+  "patches": [
+    {
+      "case_id": "diag-supp-v1-train-001",
+      "target": {
+        "contradictions": [
+          "同一P1测点09:20的压力分别记录0.42MPa和0.68MPa"
+        ],
+        "missing_information": [
+          "压力仪表和采集通道的对应关系",
+          "可复核的有效压力及适用要求"
+        ],
+        "next_checks": [
+          "核对压力仪表、采集通道及P1测点09:20的原始压力记录",
+          "由现场人员复核P1有效压力及适用要求，不选定冲突读数"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-002",
+      "target": {
+        "missing_information": [
+          "线圈额定电压的铭牌原图、有效规格和更换记录",
+          "现场供电电压的有效记录"
+        ],
+        "next_checks": [
+          "核对C082线圈的铭牌额定电压、序列号与更换记录",
+          "对照确认的额定电压复核供电电压记录，不作带电试验"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-003",
+      "target": {
+        "contradictions": [
+          "同一I31-04检视批次的T7齿面同时记录崩边与无崩边"
+        ],
+        "missing_information": [
+          "T7齿面的原始图像和有效复核记录",
+          "定位偏差与检查工况记录"
+        ],
+        "next_checks": [
+          "核对I31-04批次及T7齿面原图，复核崩边记录差异",
+          "补齐定位偏差与检查工况记录后，再关联齿面状态"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-004",
+      "target": {
+        "missing_information": [
+          "当前LS14丝杆组件适用的有效导程图纸及签发来源",
+          "当前参数及可复核的位移记录"
+        ],
+        "next_checks": [
+          "核对LS14组件、R3图纸及签发来源，确认有效导程",
+          "对照已确认导程复核参数与位移记录"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-005",
+      "target": {
+        "contradictions": [
+          "同一H2加热支路10:15的电流分别为0A和8.2A"
+        ],
+        "missing_information": [
+          "有效的H2支路电流与仪表、通道对应关系",
+          "元件状态及供电的有效记录"
+        ],
+        "next_checks": [
+          "核对H2支路10:15的电流原始记录及仪表、通道对应关系",
+          "由具备资格人员复核支路电流与元件及供电记录，不作带电操作"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-006",
+      "target": {
+        "contradictions": [
+          "同一B019同时生效的地址为192.0.2.21与192.0.2.34"
+        ],
+        "next_checks": [
+          "核对B019设备的地址、有效台账及配置变更记录",
+          "确认有效地址映射后核对离线事件设备身份，不发起网络操作"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-007",
+      "target": {
+        "contradictions": [
+          "同一E071事件D1输入11:03:08的门状态为关闭和打开"
+        ],
+        "missing_information": [
+          "E071联锁事件及D1输入映射的原始记录",
+          "现场门状态的有效复核结果"
+        ],
+        "next_checks": [
+          "核对E071事件的门状态原始记录、时间及D1输入映射",
+          "由现场人员复核门状态；不旁路联锁"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-008",
+      "target": {
+        "contradictions": [
+          "同一X轴H026-5回零周期结束时记录完成和未完成回零"
+        ],
+        "missing_information": [
+          "X轴H026-5回零周期的原始事件与状态映射",
+          "原点传感器及流程条件的有效记录"
+        ],
+        "next_checks": [
+          "核对X轴H026-5回零周期的原始事件及状态转换记录",
+          "补齐原点传感器与流程条件记录后，再判断回零异常"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-009",
+      "target": {
+        "next_checks": [
+          "按时间和运行阶段对齐P2压力记录，不将不同阶段读数视为冲突",
+          "核对各阶段压力要求，并补齐同一阶段的连续压力记录"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-010",
+      "target": {
+        "next_checks": [
+          "统一P3压力记录的单位；0.45MPa与450kPa等价",
+          "补齐异响发生工况、现场记录及该支路压力要求后再定位"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-011",
+      "target": {
+        "next_checks": [
+          "核对贴标执行器J4插接件的有效规格和获准处理方案",
+          "处理后按适用规程复核J4供电通路与执行器动作记录"
+        ]
+      }
+    },
+    {
+      "case_id": "diag-supp-v1-train-012",
+      "target": {
+        "next_checks": [
+          "核对热转印机色带的获准耗材规格及处理方案",
+          "处理后复核打印通道色带状态和试印记录"
+        ]
+      }
+    }
+  ]
+}

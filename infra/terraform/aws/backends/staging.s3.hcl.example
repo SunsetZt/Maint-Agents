@@ -1,0 +1,6 @@
+bucket         = "REPLACE_WITH_STAGING_TERRAFORM_STATE_BUCKET"
+key            = "industrial-ops/staging/terraform.tfstate"
+region         = "REPLACE_WITH_STAGING_STATE_REGION"
+encrypt        = true
+dynamodb_table = "REPLACE_WITH_STAGING_TERRAFORM_LOCK_TABLE"
+kms_key_id     = "REPLACE_WITH_STAGING_STATE_KMS_KEY_ARN"

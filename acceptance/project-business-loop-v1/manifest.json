@@ -1,0 +1,64 @@
+{
+  "schema_version": "project-business-loop-manifest/v1",
+  "manifest_id": "project-business-loop-pump-seal-leak-v1",
+  "classification": "SYNTHETIC_PROJECT_ACCEPTANCE",
+  "allowed_claims": [
+    "PROJECT_STAGING_BUSINESS_ACCEPTANCE"
+  ],
+  "prohibited_claims": [
+    "REAL_CUSTOMER_EVIDENCE",
+    "ENTERPRISE_PRODUCTION_DATA",
+    "TRAINING_GOLD",
+    "PRODUCTION_ACCEPTANCE"
+  ],
+  "tenant_binding": {
+    "tenant_id": "tenant-m1-demo",
+    "site_id": "site-m1-demo",
+    "asset_id": "asset-m1-pump",
+    "asset_model": "PUMP-X100"
+  },
+  "source_image": {
+    "path": "artifacts/m7-vlm-checkpoint-continuation-rescored-lab/object-store/tenant/tenant-simulation-lab/datasets/snapshots/dataset-sim-m7-eval-a5d68beddfc298953a61d8a2/published/media/test/m7-sim-evaluation-003-pump_seal_leak.png",
+    "media_type": "image/png",
+    "size_bytes": 7794,
+    "sha256": "3e87a180daaed2f7cd268f0ec14e5675276d69fc01630c4c0266fd464f499e0a"
+  },
+  "model_expectations": {
+    "target_environment": "STAGING",
+    "diagnosis_alias": "industrial-diagnosis-staging",
+    "vlm_alias": "industrial-diagnosis-staging",
+    "required_components": [
+      "OCR",
+      "VLM",
+      "DIAGNOSIS"
+    ],
+    "expected_ocr_terms": [
+      "PUMP"
+    ],
+    "expected_visual_labels": [
+      "pump_seal_leak"
+    ]
+  },
+  "business_scenario": {
+    "title": "一号循环泵",
+    "incident_description": "合成示范工厂一号站点的一号循环泵在约 70% 负载下运行时出现机械密封持续滴漏、轻微异响和振动增大，出口压力由 0.62 MPa 下降并在 0.52 至 0.58 MPa 之间波动。现场无烟雾、短路或人员受伤，操作员已降载并设置警戒区域。",
+    "quotation_candidate_id": "sandbox-cpq-standard-repair",
+    "authorization_type": "COVERED_SERVICE",
+    "initial_parts_required": false,
+    "fsm_candidate_profile_id": "sandbox-fsm-profile",
+    "field_assignee_subject_id": "subject-m1-engineer",
+    "field_step_code": "MECHANICAL_SEAL_REPLACEMENT",
+    "field_step_description": "停机泄压并完成上锁挂牌，拆检并更换机械密封，复核轴承与联轴器状态。",
+    "root_cause": "机械密封磨损导致介质泄漏和压力波动。",
+    "customer_signer": "张工",
+    "customer_signature_text": "确认维修结果与现场状态。",
+    "customer_result_confirmation": "已确认机械密封更换完成，试运行无持续泄漏。",
+    "cost_amount": "850.00",
+    "satisfaction_rating": 5
+  },
+  "expected_final_state": {
+    "work_order_status": "CLOSED",
+    "incident_status": "CLOSED",
+    "acceptance_label": "PROJECT_STAGING_BUSINESS_ACCEPTED"
+  }
+}

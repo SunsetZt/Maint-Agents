@@ -1,0 +1,290 @@
+environment: staging
+argocdNamespace: argocd
+projectName: industrial-ops-ai
+destinationServer: https://kubernetes.default.svc
+
+repository:
+  url: ""
+  revision: ""
+
+platform:
+  namespace: industrial-platform-system
+  chartPath: infra/helm/industrial-ops-ai-platform
+  gateway:
+    name: industrial-ops-gateway
+    hostname: ""
+    tlsSecretName: ""
+    allowHttp: false
+
+application:
+  enabled: true
+  namespace: industrial-app
+  chartPath: infra/helm/industrial-ops-application
+  highAvailability:
+    enabled: true
+  topologySpread:
+    topologyKey: kubernetes.io/hostname
+    minDomains: 2
+    maxSkew: 1
+  runtime:
+    configMapName: ""
+    secretName: ""
+    nextAuthSecretKey: nextauth-secret
+  gateway:
+    enabled: true
+    className: industrial-ops-envoy
+    hostname: ""
+    tlsSecretName: ""
+    allowHttp: false
+  images:
+    api: {repository: "", digest: ""}
+    web: {repository: "", digest: ""}
+    mediaWorker: {repository: "", digest: ""}
+    workflowWorker: {repository: "", digest: ""}
+    eventWorker: {repository: "", digest: ""}
+  workloads:
+    api: {enabled: true, replicaCount: 2, podDisruptionBudget: {minAvailable: 1}}
+    web: {enabled: true, replicaCount: 2, podDisruptionBudget: {minAvailable: 1}}
+    mediaWorker: {enabled: true, replicaCount: 2, podDisruptionBudget: {minAvailable: 1}}
+    workflowWorker: {enabled: true, replicaCount: 2, podDisruptionBudget: {minAvailable: 1}}
+    eventWorker: {enabled: true, replicaCount: 2, podDisruptionBudget: {minAvailable: 1}}
+  autoscaling:
+    enabled: true
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        selectPolicy: Max
+        policies:
+          - {type: Percent, value: 100, periodSeconds: 60}
+          - {type: Pods, value: 4, periodSeconds: 60}
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        selectPolicy: Min
+        policies:
+          - {type: Percent, value: 25, periodSeconds: 60}
+          - {type: Pods, value: 1, periodSeconds: 60}
+    hpa:
+      api: {minReplicas: 2, maxReplicas: 10, targetCPUUtilizationPercentage: 70, targetMemoryUtilizationPercentage: 80}
+      web: {minReplicas: 2, maxReplicas: 10, targetCPUUtilizationPercentage: 70, targetMemoryUtilizationPercentage: 80}
+      mediaWorker: {minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70, targetMemoryUtilizationPercentage: 80}
+    keda:
+      pollingInterval: 30
+      cooldownPeriod: 300
+      workflowWorker:
+        minReplicaCount: 2
+        maxReplicaCount: 10
+        fallback: {failureThreshold: 3, replicas: 2}
+        temporal:
+          endpoint: temporal.industrial-data.svc:7233
+          namespace: default
+          taskQueue: industrial-ops-m2
+          queueTypes: workflow,activity
+          targetQueueSize: 5
+          activationTargetQueueSize: 0
+      eventWorker:
+        minReplicaCount: 2
+        maxReplicaCount: 10
+        fallback: {failureThreshold: 3, replicas: 2}
+        kafka:
+          bootstrapServers: kafka.industrial-data.svc:9092
+          topic: ops.work-order.v1
+          consumerGroup: industrial-ops-m3-feedback-v1
+          lagThreshold: 20
+          activationLagThreshold: 1
+          offsetResetPolicy: latest
+          allowIdleConsumers: false
+          scaleToZeroOnInvalidOffset: false
+
+externalSecrets:
+  enabled: false
+  repositoryUrl: https://charts.external-secrets.io
+  chart: external-secrets
+  version: 2.8.0
+  namespace: external-secrets
+  controllerClass: industrial-ops-runtime
+  scopedNamespace: industrial-app
+  controllerReplicaCount: 2
+  webhookReplicaCount: 2
+  certControllerReplicaCount: 2
+  topologySpread:
+    topologyKey: kubernetes.io/hostname
+    minDomains: 2
+    maxSkew: 1
+  runtime:
+    chartPath: infra/helm/industrial-ops-runtime-secrets
+    serviceAccount:
+      name: industrial-ops-vault-reader
+    secretStore:
+      name: industrial-ops-vault
+    externalSecret:
+      name: industrial-ops-runtime
+    targetSecretName: ""
+    vault:
+      server: https://vault.industrial-security.svc:8200
+      path: secret
+      version: v2
+      caProvider:
+        type: ConfigMap
+        name: vault-ca
+        key: ca.crt
+      auth:
+        mountPath: kubernetes
+        role: industrial-ops-application
+        audiences: [vault]
+    remote:
+      key: industrial-ops/application
+    refreshPolicy: Periodic
+    refreshInterval: 5m
+    lifecycle:
+      creationPolicy: Orphan
+      deletionPolicy: Retain
+    mappings:
+      - {secretKey: IOAP_DATABASE_URL, remoteProperty: database_url}
+      - {secretKey: IOAP_OIDC_CLIENT_SECRET, remoteProperty: oidc_client_secret}
+      - {secretKey: IOAP_MINIO_ACCESS_KEY, remoteProperty: minio_access_key}
+      - {secretKey: IOAP_MINIO_SECRET_KEY, remoteProperty: minio_secret_key}
+      - {secretKey: IOAP_NEXTAUTH_SECRET, remoteProperty: nextauth_secret}
+      - {secretKey: nextauth-secret, remoteProperty: nextauth_secret}
+
+certManager:
+  enabled: true
+  repositoryUrl: https://charts.jetstack.io
+  chart: cert-manager
+  version: v1.20.3
+  namespace: cert-manager
+
+envoyGateway:
+  enabled: true
+  repositoryUrl: docker.io/envoyproxy
+  chart: gateway-helm
+  version: v1.8.0
+  namespace: envoy-gateway-system
+
+inferenceGateway:
+  enabled: true
+  crd:
+    repositoryUrl: https://github.com/kubernetes-sigs/gateway-api-inference-extension.git
+    revision: v1.5.0
+    path: config/crd
+  aiGateway:
+    repositoryUrl: registry-1.docker.io/envoyproxy
+    chart: ai-gateway-helm
+    version: v0.6.0
+    namespace: envoy-ai-gateway-system
+    controllerReplicaCount: 2
+    leaderElection: true
+    watchNamespaces: [industrial-models]
+    service:
+      name: ai-gateway-controller
+      port: 1063
+
+supplyChainPolicy:
+  enabled: false
+  repositoryUrl: https://sigstore.github.io/helm-charts
+  chart: policy-controller
+  version: 0.10.6
+  namespace: cosign-system
+  policyChartPath: infra/helm/industrial-ops-supply-chain-policy
+  imageRepositoryGlob: ""
+  certificateIdentityRegexp: ""
+  certificateOidcIssuer: https://token.actions.githubusercontent.com
+  mode: warn
+
+observability:
+  enabled: false
+  repositoryUrl: https://prometheus-community.github.io/helm-charts
+  chart: kube-prometheus-stack
+  version: 86.0.1
+  namespace: industrial-observability
+  configChartPath: infra/helm/industrial-ops-observability
+  retention: 30d
+  storageSize: 100Gi
+  grafanaAdminSecretName: industrial-ops-grafana-admin
+  apiServiceMonitorEnabled: false
+  workerServiceMonitorsEnabled: false
+  vllmRuntimePodMonitorEnabled: false
+  otelCollectorEnabled: false
+  tempoEndpoint: https://tempo.example.invalid/otlp
+
+keda:
+  enabled: true
+  repositoryUrl: https://kedacore.github.io/charts
+  chart: keda
+  version: 2.20.1
+  namespace: keda
+  operatorReplicaCount: 2
+  metricsServerReplicaCount: 2
+  webhooksReplicaCount: 2
+  topologySpread:
+    topologyKey: kubernetes.io/hostname
+    minDomains: 2
+    maxSkew: 1
+
+recovery:
+  enabled: false
+  namespace: industrial-recovery
+  chartPath: infra/helm/industrial-ops-recovery
+  reporter:
+    image:
+      repository: ""
+      digest: ""
+      pullPolicy: IfNotPresent
+    apiUrl: https://industrial-ops-api.industrial-app.svc
+    tokenUrl: https://keycloak.industrial-security.svc/realms/industrial-ops/protocol/openid-connect/token
+    clientId: industrial-ops-recovery-reporter
+    clientSecret:
+      name: industrial-ops-recovery-reporter
+      key: client-secret
+    caSecret:
+      name: industrial-ops-enterprise-ca
+      key: ca.crt
+  verificationJobs: []
+
+gpuOperator:
+  enabled: true
+  repositoryUrl: https://helm.ngc.nvidia.com/nvidia
+  chart: gpu-operator
+  version: v26.3.3
+  namespace: gpu-operator
+  driverEnabled: true
+  toolkitEnabled: true
+  dcgmServiceMonitorEnabled: false
+
+kserve:
+  enabled: true
+  repositoryUrl: ghcr.io/kserve/charts
+  version: v0.19.0
+  namespace: kserve
+  crdChart: kserve-crd
+  resourcesChart: kserve-resources
+
+releaseController:
+  enabled: true
+  namespace: industrial-models
+  chartPath: infra/helm/industrial-ops-release-controller
+  replicaCount: 2
+  leaderElection:
+    enabled: true
+    leaseName: industrial-ops-release-controller
+    leaseDurationSeconds: 15
+    renewDeadlineSeconds: 10
+    retryPeriodSeconds: 2
+  image:
+    repository: ""
+    digest: ""
+  runtimeSecret:
+    name: industrial-ops-release-controller
+    databaseUrlKey: database-url
+    auditHashKey: oidc-client-secret
+  controller:
+    tenantId: ""
+    subjectId: m5-deployment-controller
+    intervalSeconds: 30
+    observationIntervalSeconds: 60
+    opaDecisionUrl: http://opa.industrial-security.svc:8181/v1/data/industrial_ops/authz/result
+    prometheusUrl: http://prometheus-prometheus.industrial-observability.svc:9090
+
+syncPolicy:
+  prune: true
+  selfHeal: true
+  retryLimit: 5

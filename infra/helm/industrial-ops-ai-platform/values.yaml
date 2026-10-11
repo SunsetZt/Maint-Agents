@@ -1,0 +1,159 @@
+environment: staging
+
+namespaces:
+  - name: industrial-app
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: cpu
+    enforceSignedImages: true
+  - name: industrial-data
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: data
+  - name: industrial-models
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: inference
+    enforceSignedImages: true
+  - name: industrial-training
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: training
+    enforceSignedImages: true
+  - name: industrial-security
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: cpu
+  - name: industrial-observability
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: observability
+  - name: industrial-recovery
+    podSecurityLevel: restricted
+    gatewayAccess: true
+    quotaProfile: recovery
+    enforceSignedImages: true
+  - name: cert-manager
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: none
+  - name: envoy-gateway-system
+    podSecurityLevel: restricted
+    gatewayAccess: true
+    quotaProfile: none
+  - name: envoy-ai-gateway-system
+    podSecurityLevel: restricted
+    gatewayAccess: true
+    quotaProfile: none
+  - name: keda
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: none
+  - name: external-secrets
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: none
+  - name: gpu-operator
+    podSecurityLevel: privileged
+    gatewayAccess: false
+    quotaProfile: none
+  - name: kserve
+    podSecurityLevel: restricted
+    gatewayAccess: false
+    quotaProfile: none
+
+quotaProfiles:
+  cpu:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "40"
+  data:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    requests.storage: 500Gi
+    pods: "60"
+  inference:
+    requests.cpu: "16"
+    requests.memory: 64Gi
+    limits.cpu: "32"
+    limits.memory: 128Gi
+    requests.nvidia.com/gpu: "4"
+    limits.nvidia.com/gpu: "4"
+    pods: "40"
+  training:
+    requests.cpu: "16"
+    requests.memory: 64Gi
+    limits.cpu: "32"
+    limits.memory: 128Gi
+    requests.nvidia.com/gpu: "4"
+    limits.nvidia.com/gpu: "4"
+    requests.storage: 1Ti
+    pods: "30"
+  observability:
+    requests.cpu: "8"
+    requests.memory: 32Gi
+    limits.cpu: "16"
+    limits.memory: 64Gi
+    requests.storage: 1Ti
+    pods: "60"
+  recovery:
+    requests.cpu: "8"
+    requests.memory: 32Gi
+    limits.cpu: "16"
+    limits.memory: 64Gi
+    requests.storage: 2Ti
+    pods: "20"
+
+defaultContainerResources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+supplyChainAdmission:
+  enabled: false
+
+priorityClasses:
+  platformControl:
+    name: industrial-platform-control
+    value: 50000
+  onlineInference:
+    name: industrial-online-inference
+    value: 100000
+  training:
+    name: industrial-training
+    value: 10000
+
+gateway:
+  enabled: true
+  namespace: industrial-models
+  className: industrial-ops-envoy
+  name: industrial-ops-gateway
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  hostname: ""
+  tlsSecretName: ""
+  allowHttp: false
+
+networkPolicy:
+  enabled: true
+  dnsNamespace: kube-system
+  dataNamespace: industrial-data
+  applicationNamespace: industrial-app
+  recoveryNamespace: industrial-recovery
+  securityNamespace: industrial-security
+  observabilityNamespace: industrial-observability
+  dataConsumerNamespaces:
+    [industrial-app, industrial-models, industrial-training, industrial-recovery]
+  securityConsumerNamespaces:
+    [industrial-app, industrial-data, industrial-models, industrial-training, industrial-recovery, external-secrets]
+  applicationPorts: [443, 8000, 8080]
+  modelPorts: [8000, 8080, 9002]
+  metricsPorts: [8080, 9090]
+  dataPorts: [443, 5432, 6379, 7233, 9000, 9092]
+  securityPorts: [8181, 8200]

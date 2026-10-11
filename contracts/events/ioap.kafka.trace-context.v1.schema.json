@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://industrial-ops.local/contracts/events/ioap.kafka.trace-context.v1.schema.json",
+  "title": "Industrial Ops Kafka Trace Context Header Profile v1",
+  "description": "Selected W3C Trace Context headers carried alongside an unchanged domain-event value. Other non-tracing Kafka headers are outside this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ioap-trace-context-profile",
+    "ioap-source-traceparent"
+  ],
+  "properties": {
+    "ioap-trace-context-profile": {
+      "const": "ioap.kafka.trace-context.v1"
+    },
+    "ioap-source-traceparent": {
+      "$ref": "#/$defs/traceparent"
+    },
+    "ioap-source-tracestate": {
+      "$ref": "#/$defs/tracestate"
+    },
+    "traceparent": {
+      "$ref": "#/$defs/traceparent"
+    },
+    "tracestate": {
+      "$ref": "#/$defs/tracestate"
+    }
+  },
+  "$defs": {
+    "traceparent": {
+      "type": "string",
+      "pattern": "^00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}$"
+    },
+    "tracestate": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    }
+  }
+}

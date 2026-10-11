@@ -1,0 +1,99 @@
+environment: staging
+
+repository:
+  url: https://git.example.com/industrial/industrial-ops-agent-platform.git
+  revision: "1111111111111111111111111111111111111111"
+
+platform:
+  gateway:
+    name: industrial-ops-gateway
+    hostname: models.staging.example.com
+    tlsSecretName: industrial-models-staging-tls
+    allowHttp: false
+
+inferenceGateway:
+  enabled: true
+
+application:
+  runtime:
+    configMapName: industrial-ops-runtime-staging
+    secretName: industrial-ops-runtime-staging
+    nextAuthSecretKey: nextauth-secret
+  gateway:
+    hostname: ops.staging.example.com
+    tlsSecretName: industrial-ops-application-staging-tls
+  images:
+    api:
+      repository: registry.example.com/industrial/api
+      digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
+    web:
+      repository: registry.example.com/industrial/web
+      digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
+    mediaWorker:
+      repository: registry.example.com/industrial/media-worker
+      digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
+    workflowWorker:
+      repository: registry.example.com/industrial/workflow-worker
+      digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
+    eventWorker:
+      repository: registry.example.com/industrial/event-worker
+      digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
+  autoscaling:
+    enabled: true
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        selectPolicy: Max
+        policies: [{type: Percent, value: 100, periodSeconds: 60}, {type: Pods, value: 4, periodSeconds: 60}]
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        selectPolicy: Min
+        policies: [{type: Percent, value: 25, periodSeconds: 60}, {type: Pods, value: 1, periodSeconds: 60}]
+    hpa:
+      api: {minReplicas: 2, maxReplicas: 10, targetCPUUtilizationPercentage: 70, targetMemoryUtilizationPercentage: 80}
+      web: {minReplicas: 2, maxReplicas: 10, targetCPUUtilizationPercentage: 70, targetMemoryUtilizationPercentage: 80}
+      mediaWorker: {minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70, targetMemoryUtilizationPercentage: 80}
+    keda:
+      pollingInterval: 30
+      cooldownPeriod: 300
+      workflowWorker:
+        minReplicaCount: 2
+        maxReplicaCount: 10
+        fallback: {failureThreshold: 3, replicas: 2}
+        temporal: {endpoint: temporal.industrial-data.svc:7233, namespace: default, taskQueue: industrial-ops-m2, queueTypes: "workflow,activity", targetQueueSize: 5, activationTargetQueueSize: 0}
+      eventWorker:
+        minReplicaCount: 2
+        maxReplicaCount: 10
+        fallback: {failureThreshold: 3, replicas: 2}
+        kafka: {bootstrapServers: kafka.industrial-data.svc:9092, topic: ops.work-order.v1, consumerGroup: industrial-ops-m3-feedback-v1, lagThreshold: 20, activationLagThreshold: 1, offsetResetPolicy: latest, allowIdleConsumers: false, scaleToZeroOnInvalidOffset: false}
+
+externalSecrets:
+  enabled: true
+  runtime:
+    targetSecretName: industrial-ops-runtime-staging
+    vault:
+      caProvider:
+        name: vault-ca
+      auth:
+        role: industrial-ops-application
+
+supplyChainPolicy:
+  enabled: true
+  imageRepositoryGlob: ghcr.io/example/industrial-ops-*
+  certificateIdentityRegexp: ^https://github.com/example/industrial-ops-agent-platform/.github/workflows/supply-chain.yml@refs/heads/main$
+  mode: warn
+
+observability:
+  enabled: true
+  apiServiceMonitorEnabled: true
+  workerServiceMonitorsEnabled: true
+  vllmRuntimePodMonitorEnabled: true
+  retention: 15d
+  storageSize: 100Gi
+
+releaseController:
+  image:
+    repository: registry.example.com/industrial/industrial-ops-agent-platform
+    digest: sha256:2222222222222222222222222222222222222222222222222222222222222222
+  controller:
+    tenantId: tenant-industrial-staging

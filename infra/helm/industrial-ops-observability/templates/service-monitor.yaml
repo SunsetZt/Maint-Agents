@@ -1,0 +1,169 @@
+{{- if .Values.apiServiceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: industrial-ops-api
+  labels:
+    app.kubernetes.io/name: industrial-ops-observability
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.apiServiceMonitor.namespace | quote }}
+  selector:
+    matchLabels:
+      {{- toYaml .Values.apiServiceMonitor.serviceSelector | nindent 6 }}
+  endpoints:
+    - port: {{ .Values.apiServiceMonitor.port | quote }}
+      path: {{ .Values.apiServiceMonitor.path | quote }}
+      interval: {{ .Values.apiServiceMonitor.interval | quote }}
+      scrapeTimeout: {{ .Values.apiServiceMonitor.scrapeTimeout | quote }}
+      scheme: http
+{{- end }}
+{{- if .Values.vllmRuntimePodMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: industrial-ops-vllm-runtimes
+  labels:
+    app.kubernetes.io/name: industrial-ops-observability
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.vllmRuntimePodMonitor.namespace | quote }}
+  selector:
+    matchLabels:
+      industrial-ops.ai/component: llm
+    matchExpressions:
+      - key: serving.kserve.io/inferenceservice
+        operator: Exists
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.vllmRuntimePodMonitor.interval | quote }}
+      scrapeTimeout: {{ .Values.vllmRuntimePodMonitor.scrapeTimeout | quote }}
+      scheme: http
+      relabelings:
+        - action: replace
+          sourceLabels:
+            - __meta_kubernetes_namespace
+          targetLabel: namespace
+        - action: replace
+          sourceLabels:
+            - __meta_kubernetes_pod_label_serving_kserve_io_inferenceservice
+          targetLabel: serving_kserve_io_inferenceservice
+{{- end }}
+{{- if .Values.timeseriesRuntimePodMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: industrial-ops-timeseries-runtimes
+  labels:
+    app.kubernetes.io/name: industrial-ops-observability
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.timeseriesRuntimePodMonitor.namespace | quote }}
+  selector:
+    matchExpressions:
+      - key: serving.kserve.io/inferenceservice
+        operator: Exists
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.timeseriesRuntimePodMonitor.interval | quote }}
+      scrapeTimeout: {{ .Values.timeseriesRuntimePodMonitor.scrapeTimeout | quote }}
+      scheme: http
+      relabelings:
+        - action: keep
+          sourceLabels:
+            - __meta_kubernetes_pod_label_serving_kserve_io_inferenceservice
+          regex: .+-timeseries
+{{- end }}
+{{- if .Values.rerankerRuntimePodMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: industrial-ops-reranker-runtimes
+  labels:
+    app.kubernetes.io/name: industrial-ops-observability
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.rerankerRuntimePodMonitor.namespace | quote }}
+  selector:
+    matchExpressions:
+      - key: serving.kserve.io/inferenceservice
+        operator: Exists
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.rerankerRuntimePodMonitor.interval | quote }}
+      scrapeTimeout: {{ .Values.rerankerRuntimePodMonitor.scrapeTimeout | quote }}
+      scheme: http
+      relabelings:
+        - action: keep
+          sourceLabels:
+            - __meta_kubernetes_pod_label_serving_kserve_io_inferenceservice
+          regex: .+-reranker
+{{- end }}
+{{- if .Values.embeddingRuntimePodMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: industrial-ops-embedding-runtimes
+  labels:
+    app.kubernetes.io/name: industrial-ops-observability
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.embeddingRuntimePodMonitor.namespace | quote }}
+  selector:
+    matchExpressions:
+      - key: serving.kserve.io/inferenceservice
+        operator: Exists
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.embeddingRuntimePodMonitor.interval | quote }}
+      scrapeTimeout: {{ .Values.embeddingRuntimePodMonitor.scrapeTimeout | quote }}
+      scheme: http
+      relabelings:
+        - action: keep
+          sourceLabels:
+            - __meta_kubernetes_pod_label_serving_kserve_io_inferenceservice
+          regex: .+-embedding
+{{- end }}
+{{- if .Values.workerServiceMonitors.enabled }}
+{{- range .Values.workerServiceMonitors.workers }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: industrial-ops-{{ .name }}
+  labels:
+    app.kubernetes.io/name: industrial-ops-observability
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ $.Values.workerServiceMonitors.namespace | quote }}
+  selector:
+    matchLabels:
+      {{- toYaml .serviceSelector | nindent 6 }}
+  endpoints:
+    - port: {{ .port | quote }}
+      path: /metrics
+      interval: {{ $.Values.workerServiceMonitors.interval | quote }}
+      scrapeTimeout: {{ $.Values.workerServiceMonitors.scrapeTimeout | quote }}
+      scheme: http
+{{- end }}
+{{- end }}

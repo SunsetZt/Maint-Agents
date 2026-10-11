@@ -1,0 +1,7 @@
+apiVersion: v2
+name: industrial-ops-application
+description: High-availability delivery for the Industrial Ops Agent application workloads
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

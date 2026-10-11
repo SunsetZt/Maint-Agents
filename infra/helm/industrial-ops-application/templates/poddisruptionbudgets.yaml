@@ -1,0 +1,28 @@
+{{- if eq (toString .Values.highAvailability.enabled) "true" -}}
+{{- $root := . -}}
+{{- $workloads := list
+  (dict "name" "api" "workload" .Values.workloads.api)
+  (dict "name" "web" "workload" .Values.workloads.web)
+  (dict "name" "media-worker" "workload" .Values.workloads.mediaWorker)
+  (dict "name" "workflow-worker" "workload" .Values.workloads.workflowWorker)
+  (dict "name" "event-worker" "workload" .Values.workloads.eventWorker)
+-}}
+{{- range $item := $workloads }}
+{{- if $item.workload.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ printf "industrial-ops-%s" $item.name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "industrial-ops-application.labels" $root | nindent 4 }}
+    {{- include "industrial-ops-application.workloadLabels" (dict "root" $root "component" $item.name) | nindent 4 }}
+spec:
+  minAvailable: {{ $item.workload.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "industrial-ops-application.selectorLabels" (dict "root" $root "component" $item.name) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

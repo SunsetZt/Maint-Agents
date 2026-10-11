@@ -1,0 +1,13 @@
+{{- range $key, $priority := .Values.priorityClasses }}
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ $priority.name }}
+  labels:
+    {{- include "industrial-ops-ai-platform.labels" $ | nindent 4 }}
+value: {{ $priority.value }}
+globalDefault: false
+preemptionPolicy: Never
+description: "Industrial Ops {{ $key }} workload priority; no workload may evict another class"
+{{- end }}

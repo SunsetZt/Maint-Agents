@@ -1,0 +1,521 @@
+{
+  "realm": "industrial-ops",
+  "enabled": true,
+  "displayName": "Industrial Operations M1",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "customer_contact" },
+      { "name": "field_engineer" },
+      { "name": "after_sales_engineer" },
+      { "name": "domain_expert" },
+      { "name": "tenant_admin" },
+      { "name": "security_auditor" },
+      { "name": "data_steward" },
+      { "name": "annotation_admin" },
+      { "name": "model_engineer" },
+      { "name": "model_evaluator" },
+      { "name": "model_release_approver" },
+      { "name": "model_release_operator" },
+      { "name": "model_deployment_controller" },
+      { "name": "platform_operator" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "industrial-ops-web",
+      "name": "Industrial Operations Web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:3000/api/auth/callback/keycloak"],
+      "webOrigins": ["http://localhost:3000"],
+      "protocol": "openid-connect",
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "industrial-ops-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "industrial-ops-web",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "stable-subject-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "subject_id",
+            "claim.name": "subject_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "tenant-context",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "approved-realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "approved-asset-scope",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "asset_ids",
+            "claim.name": "asset_ids",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "approved-site-scope",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "site_ids",
+            "claim.name": "site_ids",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "supplier-agent",
+      "name": "External Supplier Diagnosis Agent Resource",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "industrial-ops-a2a-client",
+      "name": "Industrial Operations Supplier A2A Client",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "${IOAP_SUPPLIER_A2A_CLIENT_SECRET}",
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["supplier.diagnosis.review"],
+      "protocolMappers": [
+        {
+          "name": "supplier-agent-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "supplier-agent",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "profile",
+      "description": "OpenID Connect built-in scope: profile",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "full name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "user.attribute": "username",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "given name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "user.attribute": "firstName",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "given_name",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "family name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "user.attribute": "lastName",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "family_name",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "name": "email",
+      "description": "OpenID Connect built-in scope: email",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "user.attribute": "emailVerified",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "name": "roles",
+      "description": "OpenID Connect scope for adding user roles to the access token",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "foo",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "client roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "foo",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "audience resolve",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-resolve-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "supplier.diagnosis.review",
+      "description": "Submit redacted diagnosis evidence for supplier advisory review",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "m1-tenant-admin",
+      "enabled": true,
+      "email": "m1-tenant-admin@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "M1",
+      "lastName": "Tenant Admin",
+      "realmRoles": ["tenant_admin"],
+      "attributes": {
+        "subject_id": ["subject-m1-tenant-admin"],
+        "tenant_id": ["tenant-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "m1-engineer",
+      "enabled": true,
+      "email": "m1-engineer@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "M1",
+      "lastName": "Engineer",
+      "realmRoles": ["field_engineer"],
+      "attributes": {
+        "subject_id": ["subject-m1-engineer"],
+        "tenant_id": ["tenant-m1-demo"],
+        "asset_ids": ["asset-m1-pump"],
+        "site_ids": ["site-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "m3-data-steward",
+      "enabled": true,
+      "email": "m3-data-steward@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "M3",
+      "lastName": "Data Steward",
+      "realmRoles": ["data_steward"],
+      "attributes": {
+        "subject_id": ["subject-m3-data-steward"],
+        "tenant_id": ["tenant-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "local-demo-admin",
+      "enabled": true,
+      "email": "local-demo-admin@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "Local Demo",
+      "lastName": "Administrator",
+      "realmRoles": [
+        "customer_contact",
+        "field_engineer",
+        "after_sales_engineer",
+        "domain_expert",
+        "tenant_admin",
+        "security_auditor",
+        "data_steward",
+        "annotation_admin",
+        "model_engineer",
+        "model_evaluator",
+        "model_release_approver",
+        "model_release_operator",
+        "model_deployment_controller",
+        "platform_operator"
+      ],
+      "attributes": {
+        "subject_id": ["subject-local-demo-admin"],
+        "tenant_id": ["tenant-m1-demo"],
+        "asset_ids": ["asset-m1-pump"],
+        "site_ids": ["site-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "m7-after-sales",
+      "enabled": true,
+      "email": "m7-after-sales@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "M7",
+      "lastName": "After Sales",
+      "realmRoles": ["after_sales_engineer"],
+      "attributes": {
+        "subject_id": ["subject-m7-after-sales"],
+        "tenant_id": ["tenant-m1-demo"],
+        "asset_ids": ["asset-m1-pump"],
+        "site_ids": ["site-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "m7-domain-expert",
+      "enabled": true,
+      "email": "m7-domain-expert@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "M7",
+      "lastName": "Domain Expert",
+      "realmRoles": ["domain_expert"],
+      "attributes": {
+        "subject_id": ["subject-m7-domain-expert"],
+        "tenant_id": ["tenant-m1-demo"],
+        "asset_ids": ["asset-m1-pump"],
+        "site_ids": ["site-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "m6-security-auditor",
+      "enabled": true,
+      "email": "m6-security-auditor@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "M6",
+      "lastName": "Security Auditor",
+      "realmRoles": ["security_auditor"],
+      "attributes": {
+        "subject_id": ["subject-m6-security-auditor"],
+        "tenant_id": ["tenant-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "m6-platform-operator",
+      "enabled": true,
+      "email": "m6-platform-operator@industrial-ops.local",
+      "emailVerified": true,
+      "firstName": "M6",
+      "lastName": "Platform Operator",
+      "realmRoles": ["platform_operator"],
+      "attributes": {
+        "subject_id": ["subject-m6-platform-operator"],
+        "tenant_id": ["tenant-m1-demo"]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${M1_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

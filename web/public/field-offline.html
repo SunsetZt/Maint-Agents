@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#0b5cad" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
+    />
+    <title>现场工作台暂时离线</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f7fa; color: #172b4d; }
+      main { width: min(36rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 2rem; border: 1px solid #d9e2ec; border-radius: 1rem; background: #fff; box-shadow: 0 12px 36px rgb(9 30 66 / 10%); }
+      h1 { margin-top: 0; font-size: 1.5rem; }
+      p { line-height: 1.7; }
+      code { overflow-wrap: anywhere; color: #0b5cad; }
+      button { border: 0; border-radius: .5rem; padding: .75rem 1.25rem; color: #fff; background: #0b5cad; font: inherit; cursor: pointer; }
+      .boundary { margin-top: 1.25rem; padding: 1rem; border-radius: .75rem; background: #fff7e6; color: #613400; }
+      .status { font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>现场工作台暂时离线</h1>
+      <p>网络状态：<span id="network-status" class="status">正在确认</span></p>
+      <p>原请求路径：<code id="request-path">/field</code></p>
+      <p>恢复网络后请显式重试。平台会重新验证当前身份、工单指派、版本和服务端权威状态。</p>
+      <button id="retry" type="button">重新连接</button>
+      <p class="boundary">
+        此页面只是不含业务数据的安全应用壳。它不会读取 Cookie、浏览器业务存储、离线工作包或待同步队列，也不会自动提交现场事实。
+      </p>
+    </main>
+    <script>
+      (() => {
+        const status = document.getElementById("network-status");
+        const path = document.getElementById("request-path");
+        const retry = document.getElementById("retry");
+        const render = () => {
+          status.textContent = navigator.onLine ? "已恢复，可重试" : "离线";
+          path.textContent = location.pathname;
+        };
+        retry.addEventListener("click", () => location.reload());
+        window.addEventListener("online", render);
+        window.addEventListener("offline", render);
+        render();
+      })();
+    </script>
+  </body>
+</html>

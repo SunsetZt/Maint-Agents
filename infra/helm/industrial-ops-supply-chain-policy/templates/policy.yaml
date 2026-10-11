@@ -1,0 +1,30 @@
+{{- $imageGlob := required "imageRepositoryGlob must select the reviewed project registry" .Values.imageRepositoryGlob -}}
+{{- $identity := required "certificateIdentityRegexp must bind the reviewed signing workflow" .Values.certificateIdentityRegexp -}}
+{{- if not (hasPrefix "https://" .Values.certificateOidcIssuer) -}}
+{{- fail "certificateOidcIssuer must use HTTPS" -}}
+{{- end -}}
+{{- if not (has .Values.mode (list "enforce" "warn")) -}}
+{{- fail "mode must be enforce or warn" -}}
+{{- end -}}
+apiVersion: policy.sigstore.dev/v1alpha1
+kind: ClusterImagePolicy
+metadata:
+  name: industrial-ops-signed-runtime
+  labels:
+    app.kubernetes.io/part-of: industrial-ops-agent-platform
+spec:
+  mode: {{ .Values.mode }}
+  images:
+    - glob: {{ $imageGlob | quote }}
+  authorities:
+    - name: industrial-ops-github-actions
+      signatureFormat: bundle
+      keyless:
+        identities:
+          - issuer: {{ .Values.certificateOidcIssuer | quote }}
+            subjectRegExp: {{ $identity | quote }}
+      attestations:
+        - name: spdx-sbom
+          predicateType: spdxjson
+        - name: slsa-provenance
+          predicateType: slsaprovenance

@@ -1,0 +1,50 @@
+controllerClass: industrial-ops-runtime
+
+serviceAccount:
+  name: industrial-ops-vault-reader
+
+secretStore:
+  name: industrial-ops-vault
+
+externalSecret:
+  name: industrial-ops-runtime
+
+target:
+  name: industrial-ops-runtime
+
+vault:
+  server: https://vault.industrial-security.svc:8200
+  path: secret
+  version: v2
+  caProvider:
+    type: ConfigMap
+    name: vault-ca
+    key: ca.crt
+  auth:
+    mountPath: kubernetes
+    role: industrial-ops-application
+    audiences:
+      - vault
+
+remote:
+  key: industrial-ops/application
+
+refreshPolicy: Periodic
+refreshInterval: 5m
+lifecycle:
+  creationPolicy: Orphan
+  deletionPolicy: Retain
+
+mappings:
+  - secretKey: IOAP_DATABASE_URL
+    remoteProperty: database_url
+  - secretKey: IOAP_OIDC_CLIENT_SECRET
+    remoteProperty: oidc_client_secret
+  - secretKey: IOAP_MINIO_ACCESS_KEY
+    remoteProperty: minio_access_key
+  - secretKey: IOAP_MINIO_SECRET_KEY
+    remoteProperty: minio_secret_key
+  - secretKey: IOAP_NEXTAUTH_SECRET
+    remoteProperty: nextauth_secret
+  - secretKey: nextauth-secret
+    remoteProperty: nextauth_secret

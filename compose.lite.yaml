@@ -1,0 +1,642 @@
+name: ${M1_COMPOSE_PROJECT_NAME:-industrial-ops-m1}
+
+x-runtime-env-file: ${M1_RUNTIME_ENV_FILE:?Run scripts/dev_lite.sh init first}
+x-api-image: &api-image
+  image: industrial-ops/m1-api:local
+  build:
+    context: .
+    dockerfile: docker/api.Dockerfile
+x-internal-no-proxy: &internal-no-proxy "localhost,127.0.0.1,::1,postgres,redis,minio,keycloak,vault,opa,temporal,clamav,enterprise-sandbox,enterprise-tool-gateway,enterprise-mcp-server,supplier-agent,api,worker,workflow-worker,web,gpu-probe,diagnosis-model,vlm-model,model-serving-gateway"
+x-enterprise-provider-secrets: &enterprise-provider-secrets
+  IOAP_ENTERPRISE_TOOL_GATEWAY_TOKEN: ${IOAP_ENTERPRISE_TOOL_GATEWAY_TOKEN:?runtime environment missing enterprise sandbox token}
+  IOAP_NOTIFICATION_PROVIDER_API_TOKEN: ${IOAP_NOTIFICATION_PROVIDER_API_TOKEN:?runtime environment missing notification provider token}
+  IOAP_NOTIFICATION_WEBHOOK_SECRET: ${IOAP_NOTIFICATION_WEBHOOK_SECRET:?runtime environment missing notification webhook secret}
+  IOAP_PROCUREMENT_PROVIDER_API_TOKEN: ${IOAP_PROCUREMENT_PROVIDER_API_TOKEN:?runtime environment missing procurement provider token}
+  IOAP_PROCUREMENT_WEBHOOK_SECRET: ${IOAP_PROCUREMENT_WEBHOOK_SECRET:?runtime environment missing procurement webhook secret}
+  IOAP_REFUND_PROVIDER_API_TOKEN: ${IOAP_REFUND_PROVIDER_API_TOKEN:?runtime environment missing refund provider token}
+  IOAP_REFUND_WEBHOOK_SECRET: ${IOAP_REFUND_WEBHOOK_SECRET:?runtime environment missing refund webhook secret}
+  IOAP_FSM_ASSIGNMENT_PROVIDER_API_TOKEN: ${IOAP_FSM_ASSIGNMENT_PROVIDER_API_TOKEN:?runtime environment missing FSM provider token}
+  IOAP_FSM_ASSIGNMENT_WEBHOOK_SECRET: ${IOAP_FSM_ASSIGNMENT_WEBHOOK_SECRET:?runtime environment missing FSM webhook secret}
+  IOAP_SERVICE_QUOTATION_PROVIDER_API_TOKEN: ${IOAP_SERVICE_QUOTATION_PROVIDER_API_TOKEN:?runtime environment missing quotation provider token}
+x-app-environment: &app-environment
+  NO_PROXY: *internal-no-proxy
+  no_proxy: *internal-no-proxy
+  IOAP_ENVIRONMENT: local
+  IOAP_LOG_LEVEL: INFO
+  IOAP_SECRET_BACKEND: vault
+  IOAP_VAULT_ADDRESS: http://vault:8200
+  IOAP_VAULT_MOUNT: secret
+  IOAP_VAULT_PATH: industrial-ops/m1
+  IOAP_VAULT_TOKEN_FILE: /run/industrial-ops-secrets/vault-token
+  IOAP_REDIS_URL: redis://redis:6379/0
+  IOAP_MINIO_ENDPOINT: minio:9000
+  IOAP_MINIO_SECURE: "false"
+  IOAP_MINIO_BUCKET: industrial-ops-media
+  IOAP_DATASET_BUCKET: industrial-ops-datasets
+  IOAP_OIDC_ISSUER: http://localhost:${M1_KEYCLOAK_PORT:-8080}/realms/industrial-ops
+  IOAP_OIDC_JWKS_URL: http://keycloak:8080/realms/industrial-ops/protocol/openid-connect/certs
+  IOAP_OIDC_AUDIENCE: industrial-ops-web
+  IOAP_OPA_DECISION_URL: http://opa:8181/v1/data/industrial_ops/authz/result
+  IOAP_TEMPORAL_ADDRESS: temporal:7233
+  IOAP_TEMPORAL_TASK_QUEUE: industrial-ops-m2
+  IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT: ${IOAP_MODEL_GATEWAY_REQUIRED_ENVIRONMENT:-STAGING}
+  IOAP_MODEL_GATEWAY_ALIAS: ${IOAP_MODEL_GATEWAY_ALIAS:-industrial-diagnosis-staging}
+  IOAP_VLM_MODEL_ALIAS: ${IOAP_VLM_MODEL_ALIAS:-industrial-diagnosis-staging}
+  IOAP_MODEL_GATEWAY_TIMEOUT_SECONDS: ${IOAP_MODEL_GATEWAY_TIMEOUT_SECONDS:-90}
+  IOAP_ENTERPRISE_TOOLS_MODE: ${IOAP_ENTERPRISE_TOOLS_MODE:-http}
+  IOAP_ENTERPRISE_TOOL_GATEWAY_URL: ${IOAP_ENTERPRISE_TOOL_GATEWAY_URL:-http://enterprise-tool-gateway:8090}
+  IOAP_ENTERPRISE_TOOL_TIMEOUT_SECONDS: ${IOAP_ENTERPRISE_TOOL_TIMEOUT_SECONDS:-5}
+  IOAP_NOTIFICATION_DELIVERY_MODE: ${IOAP_NOTIFICATION_DELIVERY_MODE:-http}
+  IOAP_NOTIFICATION_PROVIDER_URL: ${IOAP_NOTIFICATION_PROVIDER_URL:-http://enterprise-sandbox:8090}
+  IOAP_PROCUREMENT_DELIVERY_MODE: ${IOAP_PROCUREMENT_DELIVERY_MODE:-http}
+  IOAP_PROCUREMENT_PROVIDER_URL: ${IOAP_PROCUREMENT_PROVIDER_URL:-http://enterprise-sandbox:8090}
+  IOAP_REFUND_DELIVERY_MODE: ${IOAP_REFUND_DELIVERY_MODE:-http}
+  IOAP_REFUND_PROVIDER_URL: ${IOAP_REFUND_PROVIDER_URL:-http://enterprise-sandbox:8090}
+  IOAP_FSM_ASSIGNMENT_DELIVERY_MODE: ${IOAP_FSM_ASSIGNMENT_DELIVERY_MODE:-http}
+  IOAP_FSM_ASSIGNMENT_PROVIDER_URL: ${IOAP_FSM_ASSIGNMENT_PROVIDER_URL:-http://enterprise-sandbox:8090}
+  IOAP_SERVICE_QUOTATION_CATALOG_MODE: ${IOAP_SERVICE_QUOTATION_CATALOG_MODE:-http}
+  IOAP_SERVICE_QUOTATION_PROVIDER_URL: ${IOAP_SERVICE_QUOTATION_PROVIDER_URL:-http://enterprise-sandbox:8090}
+  IOAP_ENTERPRISE_MCP_SERVER_URL: ${IOAP_ENTERPRISE_MCP_SERVER_URL:-http://enterprise-mcp-server:8091/mcp}
+  IOAP_ENTERPRISE_MCP_SERVER_ID: ${IOAP_ENTERPRISE_MCP_SERVER_ID:-industrial-enterprise-tools}
+  IOAP_ENTERPRISE_MCP_SERVER_VERSION: ${IOAP_ENTERPRISE_MCP_SERVER_VERSION:-1.0.0}
+  IOAP_ENTERPRISE_MCP_TOKEN_URL: ${IOAP_ENTERPRISE_MCP_TOKEN_URL:-http://keycloak:8080/realms/industrial-ops/protocol/openid-connect/token}
+  IOAP_ENTERPRISE_MCP_CLIENT_ID: ${IOAP_ENTERPRISE_MCP_CLIENT_ID:-industrial-ops-mcp-client}
+  IOAP_ENTERPRISE_MCP_RESOURCE: ${IOAP_ENTERPRISE_MCP_RESOURCE:-http://enterprise-mcp-server:8091/mcp}
+  IOAP_ENTERPRISE_MCP_ALLOWED_SCOPES: '${IOAP_ENTERPRISE_MCP_ALLOWED_SCOPES:-["industrial.asset.read","industrial.warranty.read","industrial.parts.read","industrial.schedule.read","industrial.work-order.read"]}'
+  IOAP_ENTERPRISE_MCP_TIMEOUT_SECONDS: ${IOAP_ENTERPRISE_MCP_TIMEOUT_SECONDS:-5}
+  IOAP_SUPPLIER_A2A_ENABLED: ${IOAP_SUPPLIER_A2A_ENABLED:-true}
+  IOAP_SUPPLIER_A2A_BASE_URL: ${IOAP_SUPPLIER_A2A_BASE_URL:-http://supplier-agent:8092}
+  IOAP_SUPPLIER_A2A_AGENT_NAME: ${IOAP_SUPPLIER_A2A_AGENT_NAME:-industrial-supplier-diagnosis-agent}
+  IOAP_SUPPLIER_A2A_AGENT_VERSION: ${IOAP_SUPPLIER_A2A_AGENT_VERSION:-1.0.0}
+  IOAP_SUPPLIER_A2A_SKILL_ID: ${IOAP_SUPPLIER_A2A_SKILL_ID:-industrial.vendor.diagnosis-review}
+  IOAP_SUPPLIER_A2A_REMOTE_TENANT: ${IOAP_SUPPLIER_A2A_REMOTE_TENANT:-industrial-ops}
+  IOAP_SUPPLIER_A2A_TOKEN_URL: ${IOAP_SUPPLIER_A2A_TOKEN_URL:-http://keycloak:8080/realms/industrial-ops/protocol/openid-connect/token}
+  IOAP_SUPPLIER_A2A_CLIENT_ID: ${IOAP_SUPPLIER_A2A_CLIENT_ID:-industrial-ops-a2a-client}
+  IOAP_SUPPLIER_A2A_RESOURCE: ${IOAP_SUPPLIER_A2A_RESOURCE:-http://supplier-agent:8092}
+  IOAP_SUPPLIER_A2A_SCOPE: ${IOAP_SUPPLIER_A2A_SCOPE:-supplier.diagnosis.review}
+  IOAP_SUPPLIER_A2A_TIMEOUT_SECONDS: ${IOAP_SUPPLIER_A2A_TIMEOUT_SECONDS:-15}
+  IOAP_GRAPH_RAG_ENABLED: ${IOAP_GRAPH_RAG_ENABLED:-false}
+  IOAP_NEO4J_URI: ${IOAP_NEO4J_URI:-neo4j://neo4j:7687}
+  IOAP_NEO4J_DATABASE: ${IOAP_NEO4J_DATABASE:-neo4j}
+  IOAP_NEO4J_USERNAME: ${IOAP_NEO4J_USERNAME:-neo4j}
+  IOAP_NEO4J_TIMEOUT_SECONDS: ${IOAP_NEO4J_TIMEOUT_SECONDS:-5}
+  IOAP_VIDEO_VLM_MODEL_ALIAS: ${IOAP_VIDEO_VLM_MODEL_ALIAS:-industrial-diagnosis}
+  IOAP_VIDEO_VLM_TIMEOUT_SECONDS: ${IOAP_VIDEO_VLM_TIMEOUT_SECONDS:-45}
+  IOAP_ENTERPRISE_PROJECT_ADOPTION_ENABLED: ${IOAP_ENTERPRISE_PROJECT_ADOPTION_ENABLED:-true}
+  IOAP_ENTERPRISE_PROJECT_REPO_ROOT: /app
+  IOAP_ENTERPRISE_PROJECT_ADOPTION_PATH: artifacts/enterprise-project-adoption/acceptance.json
+  IOAP_ENTERPRISE_PROJECT_ADOPTION_CACHE_SECONDS: ${IOAP_ENTERPRISE_PROJECT_ADOPTION_CACHE_SECONDS:-15}
+  IOAP_REALTIME_MEDIA_ENABLED: ${IOAP_REALTIME_MEDIA_ENABLED:-false}
+  IOAP_REALTIME_SIGNALING_URL: ${IOAP_REALTIME_SIGNALING_URL:-ws://localhost:7880/realtime}
+  IOAP_REALTIME_STUN_URLS: '${IOAP_REALTIME_STUN_URLS:-[]}'
+  IOAP_REALTIME_TURN_URL: ${IOAP_REALTIME_TURN_URL:-}
+  IOAP_REALTIME_TOKEN_TTL_SECONDS: ${IOAP_REALTIME_TOKEN_TTL_SECONDS:-60}
+  IOAP_REALTIME_LEASE_SECONDS: ${IOAP_REALTIME_LEASE_SECONDS:-90}
+  IOAP_REALTIME_MAX_SESSION_SECONDS: ${IOAP_REALTIME_MAX_SESSION_SECONDS:-3600}
+  IOAP_REALTIME_HEARTBEAT_INTERVAL_SECONDS: ${IOAP_REALTIME_HEARTBEAT_INTERVAL_SECONDS:-20}
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.5-pg16-bookworm
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=4
+      - -c
+      - max_wal_senders=4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?runtime environment missing POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?runtime environment missing POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?runtime environment missing POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [backend]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.10-alpine3.21
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+    networks: [backend]
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?runtime environment missing MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?runtime environment missing MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "127.0.0.1:${M1_MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    networks: [backend]
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?runtime environment missing MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?runtime environment missing MINIO_ROOT_PASSWORD}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        mc mb --ignore-existing local/industrial-ops-media >/dev/null
+        mc anonymous set none local/industrial-ops-media >/dev/null
+        mc mb --ignore-existing local/industrial-ops-datasets >/dev/null
+        mc anonymous set none local/industrial-ops-datasets >/dev/null
+    networks: [backend]
+    restart: "no"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?runtime environment missing KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?runtime environment missing KEYCLOAK_ADMIN_PASSWORD}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: http://localhost:${M1_KEYCLOAK_PORT:-8080}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      M1_DEMO_USER_PASSWORD: ${M1_DEMO_USER_PASSWORD:?runtime environment missing M1_DEMO_USER_PASSWORD}
+      IOAP_SUPPLIER_A2A_CLIENT_SECRET: ${IOAP_SUPPLIER_A2A_CLIENT_SECRET:-disabled-local-a2a-secret}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
+          grep -q '200 OK' <&3
+      interval: 8s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    ports:
+      - "127.0.0.1:${M1_KEYCLOAK_PORT:-8080}:8080"
+    volumes:
+      - ./infra/keycloak/m1-realm.json:/opt/keycloak/data/import/industrial-ops-realm.json:ro
+    networks: [backend]
+    restart: unless-stopped
+
+  vault:
+    image: hashicorp/vault:1.20.4
+    cap_add: [IPC_LOCK]
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:?runtime environment missing VAULT_DEV_ROOT_TOKEN_ID}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - vault-data:/vault/file
+    networks: [backend]
+    restart: unless-stopped
+
+  vault-bootstrap:
+    image: hashicorp/vault:1.20.4
+    user: "0:0"
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment: &vault-runtime-environment
+      <<: *enterprise-provider-secrets
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN_ID:?runtime environment missing VAULT_DEV_ROOT_TOKEN_ID}
+      IOAP_DATABASE_URL: ${IOAP_DATABASE_URL:?runtime environment missing IOAP_DATABASE_URL}
+      IOAP_OIDC_CLIENT_SECRET: ${IOAP_OIDC_CLIENT_SECRET:?runtime environment missing IOAP_OIDC_CLIENT_SECRET}
+      IOAP_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?runtime environment missing MINIO_ROOT_USER}
+      IOAP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?runtime environment missing MINIO_ROOT_PASSWORD}
+      IOAP_NEXTAUTH_SECRET: ${IOAP_NEXTAUTH_SECRET:?runtime environment missing IOAP_NEXTAUTH_SECRET}
+      IOAP_MODEL_GATEWAY_API_KEY: ${IOAP_MODEL_GATEWAY_API_KEY:-}
+      IOAP_REALTIME_TURN_SHARED_SECRET: ${IOAP_REALTIME_TURN_SHARED_SECRET:-}
+      IOAP_ENTERPRISE_MCP_CLIENT_SECRET: ${IOAP_ENTERPRISE_MCP_CLIENT_SECRET:-}
+      IOAP_SUPPLIER_A2A_CLIENT_SECRET: ${IOAP_SUPPLIER_A2A_CLIENT_SECRET:-disabled-local-a2a-secret}
+      IOAP_NEO4J_PASSWORD: ${IOAP_NEO4J_PASSWORD:-disabled-local-neo4j-password}
+    entrypoint: ["/bin/sh", "/vault/config/bootstrap.sh"]
+    volumes: &vault-runtime-volumes
+      - ./infra/vault/bootstrap.sh:/vault/config/bootstrap.sh:ro
+      - ./infra/vault/runtime-manager.sh:/vault/config/runtime-manager.sh:ro
+      - ./infra/vault/policies/m1-api.hcl:/vault/config/m1-api.hcl:ro
+      - runtime-secrets:/vault/runtime
+    networks: [backend]
+    restart: "no"
+
+  vault-runtime-manager:
+    image: hashicorp/vault:1.20.4
+    user: "0:0"
+    depends_on:
+      vault:
+        condition: service_healthy
+      vault-bootstrap:
+        condition: service_completed_successfully
+    environment: *vault-runtime-environment
+    entrypoint: ["/bin/sh", "/vault/config/runtime-manager.sh"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test -s /vault/runtime/vault-token &&
+          VAULT_TOKEN="$$(cat /vault/runtime/vault-token)"
+          vault token lookup >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    volumes: *vault-runtime-volumes
+    networks: [backend]
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:1.4.5-debian13-slim
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    volumes:
+      - clamav-data:/var/lib/clamav
+    networks: [backend]
+    restart: unless-stopped
+
+  opa:
+    image: openpolicyagent/opa:1.8.0-static
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policy/policy.rego"]
+    healthcheck:
+      test: ["CMD", "/opa", "eval", "--fail", "--data", "/policy/policy.rego", "data.industrial_ops.authz.role_actions"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - ./infra/opa/policy.rego:/policy/policy.rego:ro
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:?runtime environment missing POSTGRES_USER}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?runtime environment missing POSTGRES_PASSWORD}
+      POSTGRES_SEEDS: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "temporal:7233"]
+      interval: 8s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [backend]
+    restart: unless-stopped
+
+  migrate:
+    <<: *api-image
+    command: ["python", "-m", "industrial_ops_agent.migrate"]
+    environment:
+      <<: *app-environment
+      IOAP_SECRET_BACKEND: environment
+      IOAP_DATABASE_URL: ${IOAP_MIGRATION_DATABASE_URL:?runtime environment missing IOAP_MIGRATION_DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  postgres-runtime-bootstrap:
+    image: pgvector/pgvector:0.8.5-pg16-bookworm
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:?runtime environment missing POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER:?runtime environment missing POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?runtime environment missing POSTGRES_PASSWORD}
+      M1_POSTGRES_RUNTIME_USER: ${M1_POSTGRES_RUNTIME_USER:?runtime environment missing M1_POSTGRES_RUNTIME_USER}
+      M1_POSTGRES_RUNTIME_PASSWORD: ${M1_POSTGRES_RUNTIME_PASSWORD:?runtime environment missing M1_POSTGRES_RUNTIME_PASSWORD}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        runtime_user=$$M1_POSTGRES_RUNTIME_USER
+        case "$$runtime_user" in
+          [a-z_]* ) ;;
+          * ) echo "invalid PostgreSQL runtime role name" >&2; exit 2 ;;
+        esac
+        case "$$runtime_user" in
+          *[!a-z0-9_]* ) echo "invalid PostgreSQL runtime role name" >&2; exit 2 ;;
+        esac
+        runtime_password_sql=$$(printf '%s' "$$M1_POSTGRES_RUNTIME_PASSWORD" | sed "s/'/''/g")
+        psql --no-psqlrc --set=ON_ERROR_STOP=1 <<SQL
+        SELECT format(
+          'CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION',
+          '$$runtime_user', '$$runtime_password_sql'
+        )
+        WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$$runtime_user') \gexec
+        SELECT format(
+          'ALTER ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION',
+          '$$runtime_user', '$$runtime_password_sql'
+        ) \gexec
+        GRANT CONNECT ON DATABASE "$$PGDATABASE" TO "$$runtime_user";
+        GRANT USAGE ON SCHEMA public TO "$$runtime_user";
+        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "$$runtime_user";
+        GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO "$$runtime_user";
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public
+          GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "$$runtime_user";
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public
+          GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "$$runtime_user";
+        SQL
+        echo "PostgreSQL runtime role and least-privilege grants are current."
+    networks: [backend]
+    restart: "no"
+
+  seed:
+    <<: *api-image
+    command: ["python", "-m", "industrial_ops_agent.seed"]
+    environment: *app-environment
+    depends_on:
+      postgres-runtime-bootstrap:
+        condition: service_completed_successfully
+      vault-bootstrap:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+    networks: [backend]
+    restart: "no"
+
+  enterprise-sandbox:
+    <<: *api-image
+    command:
+      - python
+      - -m
+      - uvicorn
+      - industrial_ops_agent.sandbox.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8090"
+    environment:
+      <<: *enterprise-provider-secrets
+      NO_PROXY: *internal-no-proxy
+      no_proxy: *internal-no-proxy
+      IOAP_ENVIRONMENT: local
+      IOAP_SANDBOX_ENABLED: "true"
+      IOAP_SANDBOX_BASE_URL: http://127.0.0.1:8090
+      IOAP_SANDBOX_PLATFORM_API_URL: http://api:8000
+      IOAP_SANDBOX_CONTROL_TOKEN: ${IOAP_SANDBOX_CONTROL_TOKEN:?runtime environment missing sandbox control token}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8090/health/ready', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: {backend: {aliases: [enterprise-tool-gateway]}}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  supplier-agent:
+    <<: *api-image
+    command:
+      - python
+      - -m
+      - uvicorn
+      - industrial_ops_agent.supplier_sandbox.asgi:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8092"
+    environment:
+      NO_PROXY: *internal-no-proxy
+      no_proxy: *internal-no-proxy
+      IOAP_ENVIRONMENT: local
+      IOAP_SUPPLIER_SANDBOX_ENABLED: "true"
+      IOAP_SUPPLIER_SANDBOX_BASE_URL: http://supplier-agent:8092
+      IOAP_SUPPLIER_A2A_AGENT_NAME: ${IOAP_SUPPLIER_A2A_AGENT_NAME:-industrial-supplier-diagnosis-agent}
+      IOAP_SUPPLIER_A2A_AGENT_VERSION: ${IOAP_SUPPLIER_A2A_AGENT_VERSION:-1.0.0}
+      IOAP_SUPPLIER_A2A_SKILL_ID: ${IOAP_SUPPLIER_A2A_SKILL_ID:-industrial.vendor.diagnosis-review}
+      IOAP_SUPPLIER_A2A_REMOTE_TENANT: ${IOAP_SUPPLIER_A2A_REMOTE_TENANT:-industrial-ops}
+      IOAP_SUPPLIER_A2A_TOKEN_URL: ${IOAP_SUPPLIER_A2A_TOKEN_URL:-http://keycloak:8080/realms/industrial-ops/protocol/openid-connect/token}
+      IOAP_SUPPLIER_SANDBOX_OIDC_ISSUER: http://localhost:${M1_KEYCLOAK_PORT:-8080}/realms/industrial-ops
+      IOAP_SUPPLIER_SANDBOX_OIDC_JWKS_URL: http://keycloak:8080/realms/industrial-ops/protocol/openid-connect/certs
+      IOAP_SUPPLIER_SANDBOX_OIDC_AUDIENCE: supplier-agent
+      IOAP_SUPPLIER_A2A_CLIENT_ID: ${IOAP_SUPPLIER_A2A_CLIENT_ID:-industrial-ops-a2a-client}
+      IOAP_SUPPLIER_A2A_SCOPE: ${IOAP_SUPPLIER_A2A_SCOPE:-supplier.diagnosis.review}
+      IOAP_SANDBOX_CONTROL_TOKEN: ${IOAP_SANDBOX_CONTROL_TOKEN:?runtime environment missing sandbox control token}
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8092/health/ready', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  api:
+    <<: *api-image
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        pip install --no-cache-dir --no-index --target /tmp/ioap-runtime-deps /opt/runtime-wheels/pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl >/dev/null && PYTHONPATH=/tmp/ioap-runtime-deps exec industrial-ops-api
+    environment: *app-environment
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      vault-runtime-manager:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      opa:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      enterprise-sandbox:
+        condition: service_healthy
+      supplier-agent:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+      - ./artifacts:/app/artifacts:ro
+      - ./.docker-cache/m3/wheels/pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl:/opt/runtime-wheels/pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl:ro
+      - /tmp
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    security_opt: [no-new-privileges:true]
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    image: industrial-ops/m1-worker:local
+    environment:
+      <<: *app-environment
+      IOAP_WORKER_READY_FILE: /tmp/worker-ready
+      IOAP_CLAMAV_HOST: clamav
+      IOAP_CLAMAV_PORT: "3310"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      vault-runtime-manager:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/worker-ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  workflow-worker:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    image: industrial-ops/m2-workflow-worker:local
+    command: ["python", "-m", "industrial_ops_agent.orchestration.runner"]
+    environment:
+      <<: *app-environment
+      IOAP_WORKER_READY_FILE: /tmp/workflow-worker-ready
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+      vault-runtime-manager:
+        condition: service_healthy
+      opa:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/workflow-worker-ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    image: industrial-ops/m1-web:local
+    environment:
+      NO_PROXY: *internal-no-proxy
+      no_proxy: *internal-no-proxy
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      NEXTAUTH_URL: http://localhost:${M1_WEB_PORT:-3000}
+      NEXTAUTH_SECRET_FILE: /run/industrial-ops-secrets/nextauth-secret
+      AUTH_KEYCLOAK_ID: industrial-ops-web
+      AUTH_KEYCLOAK_ISSUER: http://localhost:${M1_KEYCLOAK_PORT:-8080}/realms/industrial-ops
+      AUTH_KEYCLOAK_INTERNAL_ISSUER: http://keycloak:8080/realms/industrial-ops
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:${M1_WEB_PORT:-3000}:3000"
+    volumes:
+      - runtime-secrets:/run/industrial-ops-secrets:ro
+    networks: [backend]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  vault-data:
+  clamav-data:
+  runtime-secrets:
+
+networks:
+  backend:
+    internal: false

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://industrial-ops.local/contracts/events/telemetry.v1.schema.json",
+  "title": "Industrial equipment telemetry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "event_id",
+    "asset_id",
+    "schema_version",
+    "sequence",
+    "source_system",
+    "source_ref",
+    "event_time",
+    "measurements"
+  ],
+  "properties": {
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "event_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "asset_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "schema_version": {"const": "rotating-equipment.telemetry.v1"},
+    "sequence": {"type": "integer", "minimum": 0},
+    "source_system": {"type": "string", "minLength": 1, "maxLength": 128},
+    "source_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "event_time": {"type": "string", "format": "date-time"},
+    "measurements": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "vibration_rms_mm_s": {"type": "number", "minimum": 0, "maximum": 200},
+        "bearing_temperature_c": {"type": "number", "minimum": -50, "maximum": 250},
+        "motor_current_a": {"type": "number", "minimum": 0, "maximum": 10000},
+        "rpm": {"type": "number", "minimum": 0, "maximum": 100000}
+      }
+    },
+    "quality_flags": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["GOOD", "ESTIMATED", "SENSOR_FAULT", "CALIBRATION_DUE", "MISSING"]
+      }
+    }
+  }
+}

@@ -1,0 +1,70 @@
+# Replace every REPLACE_WITH value before an independently reviewed Production plan.
+environment                    = "production"
+aws_region                     = "ap-southeast-1"
+allowed_account_ids            = ["000000000000"] # REPLACE_WITH_PRODUCTION_ACCOUNT_ID
+name_prefix                    = "industrial-ops"
+owner                          = "platform-engineering"
+cost_center                    = "REPLACE_WITH_COST_CENTER"
+data_classification            = "restricted"
+
+vpc_cidr              = "10.60.0.0/16"
+availability_zones    = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
+public_subnet_cidrs   = ["10.60.0.0/24", "10.60.1.0/24", "10.60.2.0/24"]
+private_subnet_cidrs  = ["10.60.16.0/20", "10.60.32.0/20", "10.60.48.0/20"]
+database_subnet_cidrs = ["10.60.64.0/24", "10.60.65.0/24", "10.60.66.0/24"]
+single_nat_gateway             = false
+
+eks_endpoint_public_access     = false
+eks_endpoint_public_access_cidrs = []
+eks_admin_principal_arns         = ["arn:aws:iam::000000000000:role/REPLACE_WITH_PRODUCTION_EKS_ADMIN_ROLE"]
+kms_admin_principal_arns         = ["arn:aws:iam::000000000000:role/REPLACE_WITH_PRODUCTION_KMS_ADMIN_ROLE"]
+
+cpu_node_group = {
+  instance_types = ["m7i.2xlarge"]
+  min_size       = 3
+  desired_size   = 3
+  max_size       = 12
+  disk_size      = 150
+}
+
+inference_gpu_node_group = {
+  instance_types = ["g6.4xlarge"]
+  min_size       = 2
+  desired_size   = 3
+  max_size       = 12
+  disk_size      = 300
+}
+
+training_gpu_node_group = {
+  instance_types = ["p5.48xlarge"]
+  min_size       = 0
+  desired_size   = 0
+  max_size       = 4
+  disk_size      = 1000
+}
+
+database_instance_class        = "db.r7g.2xlarge"
+database_allocated_storage     = 500
+database_max_allocated_storage = 2000
+database_multi_az              = true
+database_backup_retention_days = 30
+database_deletion_protection   = true
+database_skip_final_snapshot   = false
+
+artifact_bucket_name = "REPLACE_WITH_PRODUCTION_ARTIFACT_BUCKET"
+audit_bucket_name    = "REPLACE_WITH_PRODUCTION_AUDIT_BUCKET"
+ecr_repository_names = [
+  "industrial-ops/api",
+  "industrial-ops/workers",
+  "industrial-ops/inference",
+]
+
+hosted_zone_id = "ZREPLACEWITHPRODUCTIONZONE"
+gateway_dns_records = {
+  api = {
+    name    = "api.example.com"
+    type    = "CNAME"
+    ttl     = 60
+    records = ["REPLACE_WITH_PRODUCTION_GATEWAY_LOAD_BALANCER_DNS"]
+  }
+}
